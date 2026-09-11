@@ -23,6 +23,13 @@ class VocAnnotation:
     objects: tuple[VocObject, ...]
 
 
+@dataclass(frozen=True)
+class AnnotationSanitization:
+    annotation: VocAnnotation
+    clipped_objects: int
+    dropped_objects: int
+
+
 def _required_text(parent: ET.Element, path: str) -> str:
     value = parent.findtext(path)
     if value is None:
@@ -55,6 +62,38 @@ def read_voc_annotation(path: str | Path) -> VocAnnotation:
     )
 
 
+def sanitize_annotation(annotation: VocAnnotation) -> AnnotationSanitization:
+    """Clip boxes to the image and drop boxes with no area, without changing the raw XML."""
+    objects: list[VocObject] = []
+    clipped_objects = 0
+    dropped_objects = 0
+    for obj in annotation.objects:
+        clipped = VocObject(
+            name=obj.name,
+            xmin=min(max(obj.xmin, 0.0), float(annotation.width)),
+            ymin=min(max(obj.ymin, 0.0), float(annotation.height)),
+            xmax=min(max(obj.xmax, 0.0), float(annotation.width)),
+            ymax=min(max(obj.ymax, 0.0), float(annotation.height)),
+        )
+        if clipped.xmin >= clipped.xmax or clipped.ymin >= clipped.ymax:
+            dropped_objects += 1
+            continue
+        if clipped != obj:
+            clipped_objects += 1
+        objects.append(clipped)
+    return AnnotationSanitization(
+        annotation=VocAnnotation(
+            filename=annotation.filename,
+            width=annotation.width,
+            height=annotation.height,
+            depth=annotation.depth,
+            objects=tuple(objects),
+        ),
+        clipped_objects=clipped_objects,
+        dropped_objects=dropped_objects,
+    )
+
+
 def to_yolo_rows(annotation: VocAnnotation, class_to_id: dict[str, int]) -> list[str]:
     rows: list[str] = []
     for obj in annotation.objects:
@@ -73,4 +112,3 @@ def to_yolo_rows(annotation: VocAnnotation, class_to_id: dict[str, int]) -> list
             f"{width:.8f} {height:.8f}"
         )
     return rows
-

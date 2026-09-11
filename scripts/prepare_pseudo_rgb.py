@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import csv
+import json
 from pathlib import Path
 import random
 import shutil
@@ -12,7 +13,7 @@ from PIL import Image
 import yaml
 from tqdm import tqdm
 
-from hsi_detection.annotations import read_voc_annotation, to_yolo_rows
+from hsi_detection.annotations import read_voc_annotation, sanitize_annotation, to_yolo_rows
 from hsi_detection.layout import discover_layout, read_classes
 from hsi_detection.spectral import make_pseudo_rgb, x2cube
 
@@ -55,14 +56,30 @@ def main() -> None:
 
     jobs: list[tuple[Path, Path]] = []
     manifest_rows: list[dict[str, str]] = []
+    box_repairs: list[dict[str, int | str]] = []
+    clipped_boxes = 0
+    dropped_boxes = 0
     for image_id in sorted(image_ids):
         annotation = annotations[image_id]
+        sanitization = sanitize_annotation(annotation)
+        clipped_boxes += sanitization.clipped_objects
+        dropped_boxes += sanitization.dropped_objects
+        if sanitization.clipped_objects or sanitization.dropped_objects:
+            box_repairs.append(
+                {
+                    "image_id": image_id,
+                    "clipped_boxes": sanitization.clipped_objects,
+                    "dropped_boxes": sanitization.dropped_objects,
+                }
+            )
         split = split_by_id[image_id]
         source = layout.train_images / annotation.filename
         destination = args.output / "images" / split / annotation.filename
         label_path = args.output / "labels" / split / f"{image_id}.txt"
         label_path.parent.mkdir(parents=True, exist_ok=True)
-        label_path.write_text("\n".join(to_yolo_rows(annotation, class_to_id)) + "\n", encoding="utf-8")
+        label_path.write_text(
+            "\n".join(to_yolo_rows(sanitization.annotation, class_to_id)) + "\n", encoding="utf-8"
+        )
         jobs.append((source, destination))
         manifest_rows.append({"image_id": image_id, "split": split})
 
@@ -93,11 +110,26 @@ def main() -> None:
     (args.output / "dataset.yaml").write_text(
         yaml.safe_dump(dataset_yaml, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
+    preparation_report = {
+        "train_images": len(image_ids) - val_count,
+        "val_images": val_count,
+        "test_images": len(jobs) - len(image_ids),
+        "bands": list(bands),
+        "split_seed": args.seed,
+        "box_repairs": {
+            "clipped_boxes": clipped_boxes,
+            "dropped_boxes": dropped_boxes,
+            "affected_images": box_repairs,
+        },
+    }
+    (args.output / "preparation_report.json").write_text(
+        json.dumps(preparation_report, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     print(f"Prepared {len(image_ids) - val_count} train, {val_count} val, and "
           f"{len(jobs) - len(image_ids)} test images")
     print(f"dataset: {(args.output / 'dataset.yaml').resolve()}")
+    print(f"box repairs: clipped={clipped_boxes}, dropped={dropped_boxes}")
 
 
 if __name__ == "__main__":
     main()
-

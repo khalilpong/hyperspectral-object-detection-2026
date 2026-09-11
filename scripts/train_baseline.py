@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+
+os.environ.setdefault("YOLO_CONFIG_DIR", str(Path(".ultralytics").resolve()))
 
 from ultralytics import YOLO
 

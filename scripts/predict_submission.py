@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import pandas as pd
+
+os.environ.setdefault("YOLO_CONFIG_DIR", str(Path(".ultralytics").resolve()))
+
 from ultralytics import YOLO
 
 
@@ -65,4 +69,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from hsi_detection.annotations import read_voc_annotation
+from hsi_detection.annotations import read_voc_annotation, sanitize_annotation
 from hsi_detection.layout import discover_layout, read_classes
 from hsi_detection.spectral import x2cube
 
@@ -34,9 +34,23 @@ def main() -> None:
     objects_per_image: Counter[int] = Counter()
     annotation_sizes: Counter[str] = Counter()
     issues: list[str] = []
+    repairable_box_issues: list[dict[str, int | str]] = []
+    clipped_boxes = 0
+    dropped_boxes = 0
 
     for xml_path in annotations:
         annotation = read_voc_annotation(xml_path)
+        sanitization = sanitize_annotation(annotation)
+        clipped_boxes += sanitization.clipped_objects
+        dropped_boxes += sanitization.dropped_objects
+        if sanitization.clipped_objects or sanitization.dropped_objects:
+            repairable_box_issues.append(
+                {
+                    "annotation": xml_path.name,
+                    "clipped_boxes": sanitization.clipped_objects,
+                    "dropped_boxes": sanitization.dropped_objects,
+                }
+            )
         annotation_sizes[f"{annotation.width}x{annotation.height}x{annotation.depth}"] += 1
         if annotation.depth != 16:
             issues.append(f"{xml_path.name}: expected depth 16, got {annotation.depth}")
@@ -50,12 +64,6 @@ def main() -> None:
         expected_image = layout.train_images / annotation.filename
         if not expected_image.exists():
             issues.append(f"{xml_path.name}: missing image {annotation.filename}")
-        for obj in annotation.objects:
-            if not (0 <= obj.xmin < obj.xmax <= annotation.width):
-                issues.append(f"{xml_path.name}: invalid x box {obj}")
-            if not (0 <= obj.ymin < obj.ymax <= annotation.height):
-                issues.append(f"{xml_path.name}: invalid y box {obj}")
-
     for image_id in sorted(train_stems - annotation_stems):
         issues.append(f"{image_id}.png: missing annotation")
     for image_id in sorted(annotation_stems - train_stems):
@@ -118,13 +126,19 @@ def main() -> None:
             "value_min": value_min,
             "value_max": value_max,
         },
+        "repairable_box_issues": {
+            "clipped_boxes": clipped_boxes,
+            "dropped_boxes": dropped_boxes,
+            "affected_images": repairable_box_issues,
+        },
         "issues": issues,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(report["counts"], indent=2))
     print("class_instances:", json.dumps(report["class_instances"], ensure_ascii=False))
-    print(f"issues: {len(issues)}")
+    print(f"fatal issues: {len(issues)}")
+    print(f"repairable boxes: clipped={clipped_boxes}, dropped={dropped_boxes}")
     print(f"report: {args.output.resolve()}")
 
 
