@@ -1,3 +1,3 @@
 run_id,date,git_commit,input,bands,model,pretrained,imgsz,batch,epochs,seed,map50_95,map50,kaggle_score,notes
 smoke-full-001,2026-09-11,a31824a,pseudo_rgb,5|8|13,YOLO26n,yolo26n.pt,320,16,1,2026,0.0897,0.169,,pipeline smoke test only
-baseline-640-b5-8-13-r1,2026-09-11,4635f03,pseudo_rgb,5|8|13,YOLO26n,yolo26n.pt,640,8,30,2026,0.65448,0.93731,,"best epoch 29; FP16 batch-1 inference; 27020 valid detections; not uploaded"
+baseline-640-b5-8-13-r1,2026-09-11,4635f03,pseudo_rgb,5|8|13,YOLO26n,yolo26n.pt,640,8,30,2026,0.65448,0.93731,0.53502,"best epoch 29; FP16 batch-1 inference; 27020 valid detections; Kaggle ref 56168567"
