@@ -58,6 +58,12 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe scripts\check_submission.py submission_baseline.csv
 ```
 
+如果 640 像素推理显存不足，启用 FP16 并把 batch 降为 1：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\predict_submission.py --weights runs\baseline\weights\best.pt --imgsz 640 --batch 1 --half --output submission_baseline.csv
+```
+
 所有随机划分都会写入 `data/processed/pseudo_rgb/split_manifest.csv`，确保后续模型使用同一训练/验证划分。
 
 训练过程中的概念和阶段门槛见 [`docs/learning_path.md`](docs/learning_path.md)，实验结果统一登记在 `experiments/experiments.csv`。

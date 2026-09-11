@@ -21,6 +21,11 @@ def main() -> None:
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--device", default="0")
+    parser.add_argument(
+        "--half",
+        action="store_true",
+        help="Use FP16 inference on supported GPUs to reduce memory use.",
+    )
     parser.add_argument("--conf", type=float, default=0.001)
     parser.add_argument("--iou", type=float, default=0.7)
     parser.add_argument("--max-det", type=int, default=300)
@@ -33,6 +38,7 @@ def main() -> None:
         imgsz=args.imgsz,
         batch=args.batch,
         device=args.device,
+        half=args.half,
         conf=args.conf,
         iou=args.iou,
         max_det=args.max_det,
