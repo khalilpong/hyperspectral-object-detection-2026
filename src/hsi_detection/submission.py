@@ -41,11 +41,17 @@ def validate_submission_frame(
         try:
             image_id = int(row.image_id)
             class_id = int(row.class_id)
-            values = [float(row.confidence), float(row.x1), float(row.y1), float(row.x2), float(row.y2)]
+            confidence, x1, y1, x2, y2 = (
+                float(row.confidence),
+                float(row.x1),
+                float(row.y1),
+                float(row.x2),
+                float(row.y2),
+            )
         except (TypeError, ValueError, OverflowError):
             issues.append(f"row {row_number}: non-numeric value")
             continue
-        if not all(math.isfinite(value) for value in values):
+        if not all(math.isfinite(value) for value in (confidence, x1, y1, x2, y2)):
             issues.append(f"row {row_number}: NaN or infinite value")
             continue
         if image_id not in image_sizes:
@@ -53,12 +59,11 @@ def validate_submission_frame(
             continue
         if not 0 <= class_id < class_count:
             issues.append(f"row {row_number}: class_id {class_id} outside 0..{class_count - 1}")
-        if not 0 <= row.confidence <= 1:
+        if not 0 <= confidence <= 1:
             issues.append(f"row {row_number}: confidence outside 0..1")
         width, height = image_sizes[image_id]
-        if not (0 <= row.x1 < row.x2 <= width):
+        if not (0 <= x1 < x2 <= width):
             issues.append(f"row {row_number}: invalid x coordinates for width {width}")
-        if not (0 <= row.y1 < row.y2 <= height):
+        if not (0 <= y1 < y2 <= height):
             issues.append(f"row {row_number}: invalid y coordinates for height {height}")
     return issues
-
