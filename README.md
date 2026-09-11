@@ -61,3 +61,4 @@ py -3.11 -m venv .venv
 所有随机划分都会写入 `data/processed/pseudo_rgb/split_manifest.csv`，确保后续模型使用同一训练/验证划分。
 
 训练过程中的概念和阶段门槛见 [`docs/learning_path.md`](docs/learning_path.md)，实验结果统一登记在 `experiments/experiments.csv`。
+预训练模型的来源、版本与许可说明见 [`docs/model_provenance.md`](docs/model_provenance.md)。
