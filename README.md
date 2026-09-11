@@ -45,6 +45,12 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe scripts\train_baseline.py --model yolo26n.pt --epochs 30
 ```
 
+每次训练会使用独立的实验目录。若训练被中断，可从对应的 `last.pt` 继续：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\train_baseline.py --resume runs\baseline\weights\last.pt
+```
+
 生成提交文件：
 
 ```powershell
