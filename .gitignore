@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Large/generated artifacts
+data/raw/
+data/processed/
+artifacts/
+runs/
+submission*.csv

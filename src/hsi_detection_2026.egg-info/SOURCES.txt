@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/hsi_detection/__init__.py
+src/hsi_detection/annotations.py
+src/hsi_detection/layout.py
+src/hsi_detection/spectral.py
+src/hsi_detection_2026.egg-info/PKG-INFO
+src/hsi_detection_2026.egg-info/SOURCES.txt
+src/hsi_detection_2026.egg-info/dependency_links.txt
+src/hsi_detection_2026.egg-info/requires.txt
+src/hsi_detection_2026.egg-info/top_level.txt
+tests/test_annotations.py
+tests/test_spectral.py
