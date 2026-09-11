@@ -10,4 +10,6 @@ data/raw/
 data/processed/
 artifacts/
 runs/
+weights/
+*.pt
 submission*.csv

@@ -18,6 +18,24 @@ SUBMISSION_COLUMNS = [
 ]
 
 
+def clip_xyxy(
+    box: tuple[float, float, float, float] | list[float],
+    width: int,
+    height: int,
+) -> tuple[float, float, float, float] | None:
+    """Clip a predicted box to its image, returning None when no area remains."""
+    x1, y1, x2, y2 = (float(value) for value in box)
+    if not all(math.isfinite(value) for value in (x1, y1, x2, y2)):
+        return None
+    x1 = min(max(x1, 0.0), float(width))
+    y1 = min(max(y1, 0.0), float(height))
+    x2 = min(max(x2, 0.0), float(width))
+    y2 = min(max(y2, 0.0), float(height))
+    if x1 >= x2 or y1 >= y2:
+        return None
+    return x1, y1, x2, y2
+
+
 def validate_submission_frame(
     frame: pd.DataFrame,
     image_sizes: Mapping[int, tuple[int, int]],

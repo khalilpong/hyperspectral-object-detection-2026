@@ -1,6 +1,6 @@
 import pandas as pd
 
-from hsi_detection.submission import SUBMISSION_COLUMNS, validate_submission_frame
+from hsi_detection.submission import SUBMISSION_COLUMNS, clip_xyxy, validate_submission_frame
 
 
 def valid_frame() -> pd.DataFrame:
@@ -22,3 +22,7 @@ def test_submission_frame_rejects_bad_box_and_class() -> None:
     assert any("class_id" in issue for issue in issues)
     assert any("x coordinates" in issue for issue in issues)
 
+
+def test_clip_xyxy_clips_and_drops_zero_area_boxes() -> None:
+    assert clip_xyxy([-2, 3, 12, 9], width=10, height=8) == (0.0, 3.0, 10.0, 8.0)
+    assert clip_xyxy([0, 8, 5, 8], width=10, height=8) is None

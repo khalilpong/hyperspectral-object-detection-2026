@@ -10,6 +10,8 @@ os.environ.setdefault("YOLO_CONFIG_DIR", str(Path(".ultralytics").resolve()))
 
 from ultralytics import YOLO
 
+from hsi_detection.submission import clip_xyxy
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run inference and create submission.csv")
@@ -40,23 +42,30 @@ def main() -> None:
 
     rows: list[dict[str, int | float]] = []
     next_id = 0
+    dropped_invalid = 0
     for image_path, result in zip(image_paths, results, strict=True):
         if result.boxes is None:
             continue
         boxes = result.boxes.xyxy.detach().cpu().numpy()
         classes = result.boxes.cls.detach().cpu().numpy()
         confidences = result.boxes.conf.detach().cpu().numpy()
+        height, width = result.orig_shape
         for box, class_id, confidence in zip(boxes, classes, confidences, strict=True):
+            clipped_box = clip_xyxy(box.tolist(), width=width, height=height)
+            if clipped_box is None:
+                dropped_invalid += 1
+                continue
+            x1, y1, x2, y2 = clipped_box
             rows.append(
                 {
                     "id": next_id,
                     "image_id": int(image_path.stem),
                     "class_id": int(class_id),
                     "confidence": float(confidence),
-                    "x1": float(box[0]),
-                    "y1": float(box[1]),
-                    "x2": float(box[2]),
-                    "y2": float(box[3]),
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
                 }
             )
             next_id += 1
@@ -65,6 +74,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows, columns=columns).to_csv(args.output, index=False)
     print(f"wrote {len(rows)} detections to {args.output.resolve()}")
+    print(f"dropped {dropped_invalid} zero-area or non-finite predictions")
 
 
 if __name__ == "__main__":
