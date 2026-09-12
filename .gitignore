@@ -2,6 +2,7 @@
 __pycache__/
 .pytest_cache/
 .ultralytics/
+/Ultralytics/
 *.egg-info/
 *.py[cod]
 
