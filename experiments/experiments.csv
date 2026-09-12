@@ -3,3 +3,4 @@ smoke-full-001,2026-09-11,a31824a,pseudo_rgb,5|8|13,YOLO26n,yolo26n.pt,320,16,1,
 baseline-640-b5-8-13-r1,2026-09-11,4635f03,pseudo_rgb,5|8|13,YOLO26n,yolo26n.pt,640,8,30,2026,0.65448,0.93731,0.53502,"best epoch 29; FP16 batch-1 inference; 27020 valid detections; Kaggle ref 56168567"
 ablation-n1024-b5-8-13-r1,2026-09-12,38cf607,pseudo_rgb,5|8|13,YOLO26n,yolo26n.pt,1024,8,30,2026,0.67136,0.94619,0.54899,"best epoch 30; FP16 batch-1 inference; 22270 valid detections; Kaggle ref 56178489"
 ablation-s1024-b5-8-13-r1,2026-09-12,74f9d79,pseudo_rgb,5|8|13,YOLO26s,yolo26s.pt,1024,4,30,2026,0.68865,0.95365,0.58555,"best epoch 29; FP16 batch-1 inference; 16242 valid detections; Kaggle ref 56179293"
+final-s1024-all3000-b5-8-13-r1,2026-09-12,8fc962f,pseudo_rgb,5|8|13,YOLO26s,yolo26s.pt,1024,4,30,2026,,,0.59683,"all 3000 labeled images; no independent validation; epoch-30 last.pt; conf 0.0001; 39350 valid detections; Kaggle ref 56186267"
