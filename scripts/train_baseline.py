@@ -21,6 +21,12 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--name", default="baseline")
+    parser.add_argument(
+        "--no-val",
+        action="store_true",
+        help="Skip per-epoch validation (the trainer still validates once after the final epoch).",
+    )
+    parser.add_argument("--no-plots", action="store_true", help="Disable training and validation plots.")
     args = parser.parse_args()
 
     model = YOLO(str(args.resume.resolve()) if args.resume else args.model)
@@ -38,7 +44,8 @@ def main() -> None:
         exist_ok=False,
         resume=bool(args.resume),
         amp=True,
-        plots=True,
+        val=not args.no_val,
+        plots=not args.no_plots,
     )
 
 
