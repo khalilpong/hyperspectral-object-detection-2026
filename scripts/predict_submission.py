@@ -32,9 +32,15 @@ def main() -> None:
     args = parser.parse_args()
 
     image_paths = sorted(args.images.glob("*.png"), key=lambda p: int(p.stem))
+    if not image_paths:
+        raise FileNotFoundError(f"No PNG images found in {args.images.resolve()}")
+    expected_paths = {path.resolve(): path for path in image_paths}
     model = YOLO(str(args.weights.resolve()))
     results = model.predict(
-        source=[str(path) for path in image_paths],
+        # A Python list of paths is treated by Ultralytics as one in-memory
+        # image batch, bypassing --batch and causing an OOM on large test sets.
+        # A glob string uses the streaming file loader and honors --batch.
+        source=str(args.images.resolve() / "*.png"),
         imgsz=args.imgsz,
         batch=args.batch,
         device=args.device,
@@ -49,7 +55,15 @@ def main() -> None:
     rows: list[dict[str, int | float]] = []
     next_id = 0
     dropped_invalid = 0
-    for image_path, result in zip(image_paths, results, strict=True):
+    seen_paths: set[Path] = set()
+    for result in results:
+        resolved_result_path = Path(result.path).resolve()
+        if resolved_result_path not in expected_paths:
+            raise RuntimeError(f"Unexpected prediction result: {resolved_result_path}")
+        if resolved_result_path in seen_paths:
+            raise RuntimeError(f"Duplicate prediction result: {resolved_result_path}")
+        seen_paths.add(resolved_result_path)
+        image_path = expected_paths[resolved_result_path]
         if result.boxes is None:
             continue
         boxes = result.boxes.xyxy.detach().cpu().numpy()
@@ -75,6 +89,11 @@ def main() -> None:
                 }
             )
             next_id += 1
+
+    missing_paths = set(expected_paths) - seen_paths
+    if missing_paths:
+        preview = ", ".join(str(path) for path in sorted(missing_paths)[:5])
+        raise RuntimeError(f"Missing predictions for {len(missing_paths)} images: {preview}")
 
     columns = ["id", "image_id", "class_id", "confidence", "x1", "y1", "x2", "y2"]
     args.output.parent.mkdir(parents=True, exist_ok=True)
