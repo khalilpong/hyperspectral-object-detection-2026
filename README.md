@@ -51,6 +51,8 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe scripts\train_baseline.py --resume runs\baseline\weights\last.pt
 ```
 
+恢复时不写其他参数会完整继承 checkpoint 的训练尺寸、batch、设备、验证和绘图设置。只有确实需要修改显存相关设置时，才显式附加 `--imgsz`、`--batch`、`--device` 或 `--workers`；脚本会拒绝 Ultralytics 无法安全覆盖的 epoch、模型、seed 和运行名，避免默认值静默污染续训。
+
 生成提交文件：
 
 ```powershell
