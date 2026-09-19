@@ -57,16 +57,16 @@ from pathlib import Path
 # ============================== 默认配置 ==============================
 # 由 make_kernel.py 生成 Kaggle Notebook 时替换这一块；云服务器上用环境变量覆盖。
 CONFIG = {
-    "MODE": "smoke",
+    "MODE": "full",
     "MODEL": "yolo26m.pt",
-    "EPOCHS": 1,
-    "RUN_NAME": "kaggle_smoke_m1024",
+    "EPOCHS": 30,
+    "RUN_NAME": "kaggle_full_yolo26m_hsi16_p010_990_e30",
     "ATTEMPTS": "8:2,6:2,4:2,4:0",
-    "MULTISCALE": 0,
+    "MULTISCALE": 1,
     "DATA": "hsi16",
     "SEED": 2026,
-    "LOWER_PERCENTILE": 0.5,
-    "UPPER_PERCENTILE": 99.5,
+    "LOWER_PERCENTILE": 1.0,
+    "UPPER_PERCENTILE": 99.0,
 }
 # =====================================================================
 

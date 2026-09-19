@@ -9,6 +9,8 @@
     python make_kernel.py --mode smoke    --model yolo26m.pt --epochs 1
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 --attempts 8:2,6:2,4:2,4:0
     python make_kernel.py --mode full     --model yolo26m.pt --epochs 30 --multiscale
+    python make_kernel.py --mode full     --model yolo26m.pt --epochs 30 --multiscale \
+        --lower-percentile 1 --upper-percentile 99
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -27,6 +29,21 @@ CODE_DATASET = f"{USERNAME}/hsi-detection-code"
 RAW_DATASET = f"{USERNAME}/hsi-competition-raw"
 
 
+def _percentile_tag(value: float) -> str:
+    scaled = round(value * 10)
+    if abs(value * 10 - scaled) < 1e-9:
+        return f"{scaled:03d}"
+    return f"{value:g}".replace(".", "p")
+
+
+def _validate_percentiles(lower: float, upper: float) -> None:
+    if not 0 <= lower < upper <= 100:
+        raise ValueError(
+            "百分位必须满足 0 <= lower < upper <= 100，"
+            f"收到 {lower:g}/{upper:g}"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("smoke", "ablation", "full"), required=True)
@@ -37,17 +54,34 @@ def main() -> None:
     parser.add_argument("--data", default="hsi16",
                         help="训练数据：hsi16（16 波段 NPY，默认）、pseudo_rgb（波段 5/8/13 伪RGB PNG）"
                              "或 pseudo_rgb:3,6,8（自定义三个波段）")
+    parser.add_argument("--seed", type=int, default=2026, help="训练随机种子")
+    parser.add_argument("--lower-percentile", type=float, default=0.5,
+                        help="HSI16 共享缩放下百分位")
+    parser.add_argument("--upper-percentile", type=float, default=99.5,
+                        help="HSI16 共享缩放上百分位")
     parser.add_argument("--run-name", help="默认按 模式_模型_数据_轮数 自动生成")
     parser.add_argument("--machine-shape", default=None,
                         help="GPU 型号；注意 NvidiaL4 对本账号不开放（推送会 400），默认留空用 Kaggle 分配的 GPU")
     args = parser.parse_args()
 
+    try:
+        _validate_percentiles(args.lower_percentile, args.upper_percentile)
+    except ValueError as error:
+        parser.error(str(error))
+
     model_tag = args.model.removesuffix(".pt")
     if args.data == "hsi16":
-        data_tag = ""
+        data_tag = "" if (args.lower_percentile, args.upper_percentile) == (0.5, 99.5) else (
+            f"_p{_percentile_tag(args.lower_percentile)}_"
+            f"{_percentile_tag(args.upper_percentile)}"
+        )
     elif args.data == "pseudo_rgb":
+        if (args.lower_percentile, args.upper_percentile) != (0.5, 99.5):
+            parser.error("--lower-percentile/--upper-percentile 只适用于 hsi16")
         data_tag = "_prgb"
     elif args.data.startswith("pseudo_rgb:"):
+        if (args.lower_percentile, args.upper_percentile) != (0.5, 99.5):
+            parser.error("--lower-percentile/--upper-percentile 只适用于 hsi16")
         data_tag = "_prgb" + args.data.split(":", 1)[1].replace(",", "")
     else:
         raise SystemExit(f"未知 --data {args.data}")
@@ -64,6 +98,9 @@ def main() -> None:
         f'    "ATTEMPTS": "{args.attempts}",\n'
         f'    "MULTISCALE": {1 if args.multiscale else 0},\n'
         f'    "DATA": "{args.data}",\n'
+        f'    "SEED": {args.seed},\n'
+        f'    "LOWER_PERCENTILE": {args.lower_percentile!r},\n'
+        f'    "UPPER_PERCENTILE": {args.upper_percentile!r},\n'
         "}"
     )
     rendered, count = re.subn(r"CONFIG = \{.*?\n\}", config, source, count=1, flags=re.S)
@@ -96,7 +133,8 @@ def main() -> None:
     print(f"  Notebook : {metadata['id']}")
     print(f"  运行名   : {run_name}")
     print(f"  配置     : mode={args.mode} model={args.model} epochs={args.epochs} "
-          f"attempts={args.attempts} multiscale={args.multiscale} data={args.data}")
+          f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
+          f"seed={args.seed} percentiles={args.lower_percentile:g}/{args.upper_percentile:g}")
     print(f"推送：cd {folder.name} && kaggle kernels push -p .")
 
 
