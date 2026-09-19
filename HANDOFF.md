@@ -42,6 +42,7 @@
 ### 下一步可以试的（按优先级）
 
 1. **额度重置后先验证支持票候选**：`submissions/submission_ens8_b368_b0715_ms7_f070_sg0125.csv`，SHA-256 `A4158EF7...0C410`。它只改变最终置信度排序，留出集跨 2/3/4 模型稳定为正；上传和最终 Submit 前需用户当时确认。
+   第二顺位候选是 `submissions/submission_ens8_b075_d070_sg0125_ms7_f070.csv`（SHA-256 `4FFE084D...6E28`）：在支持票基础上把 B/D 权重调为 0.75/0.7，留出 0.71180，但会改变约 8.15 万个框，风险高于纯支持票；详见 `experiments/ensemble-weight-sweep-supportgain-20260919.md`。
 2. **等待并收取 P1–P99 新成员**：查询 `kaggle kernels status zephyrpong/hsi-yolo26m-p010-990-full`；成功后下载输出、核对 `status.json`/权重/提交文件，再为它生成独立缓存并先做低权重融合。不要直接提交单模型，也不要覆盖旧 cache tag。本机 `data/processed/hsi16_shared_p010_990` 已完整生成；`build_ensemble_submission.sh` 可通过 `P1_WEIGHTS=... W_I=0.4` 显式加入第九成员。
 3. **调成员权重**（零 GPU，每个约 10 分钟）：`W_G=0.5 bash scripts/build_ensemble_submission.sh submissions/try.csv`，
    每个成员的系数都可以用环境变量 `W_B`~`W_H` 覆盖，`FUSION_IOU` 也可以调。现在的系数（1.0/0.6/0.8/0.6/0.5/0.5/0.8/0.8）是拍脑袋定的。
