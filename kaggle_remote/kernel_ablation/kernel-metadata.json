@@ -1,0 +1,18 @@
+{
+  "id": "zephyrpong/hsi-yolo26l-ablation",
+  "title": "hsi-yolo26l-ablation",
+  "code_file": "run_hsi_yolo26.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [
+    "zephyrpong/hsi-detection-code",
+    "zephyrpong/hsi-competition-raw"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

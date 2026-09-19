@@ -12,6 +12,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the single-model pseudo-RGB baseline")
     parser.add_argument("--data", type=Path)
     parser.add_argument("--model")
+    parser.add_argument(
+        "--load-weights",
+        type=Path,
+        help=(
+            "Transfer compatible weights into a YAML-defined architecture before training. "
+            "This is useful for architecture-only variants such as yolo26s-p2.yaml."
+        ),
+    )
     parser.add_argument("--resume", type=Path, help="Resume an interrupted Ultralytics run from last.pt")
     parser.add_argument("--epochs", type=int)
     parser.add_argument("--imgsz", type=int)
@@ -20,6 +28,34 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--workers", type=int)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--name")
+    parser.add_argument("--optimizer")
+    parser.add_argument("--lr0", type=float)
+    parser.add_argument("--lrf", type=float)
+    parser.add_argument("--warmup-epochs", type=float)
+    parser.add_argument("--box", type=float)
+    parser.add_argument("--hsv-h", type=float)
+    parser.add_argument("--hsv-s", type=float)
+    parser.add_argument("--hsv-v", type=float)
+    parser.add_argument("--mosaic", type=float)
+    parser.add_argument("--close-mosaic", type=int)
+    parser.add_argument("--scale", type=float)
+    parser.add_argument(
+        "--multi-scale",
+        type=float,
+        help=(
+            "Randomly resize each training batch within imgsz * (1 +/- value). "
+            "This is distinct from random-affine --scale."
+        ),
+    )
+    parser.add_argument(
+        "--extra-channel-init",
+        choices=("random", "zero"),
+        help=(
+            "Initialization for input channels beyond RGB when the dataset declares channels > 3. "
+            "'zero' preserves the pretrained three-channel function at step zero while allowing "
+            "the extra channel weights to learn normally."
+        ),
+    )
     parser.add_argument(
         "--val",
         action=argparse.BooleanOptionalAction,
@@ -37,7 +73,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     if args.resume:
         unsupported = [
             option
-            for option in ("model", "epochs", "seed", "name")
+            for option in (
+                "model",
+                "load_weights",
+                "epochs",
+                "seed",
+                "name",
+                "optimizer",
+                "lr0",
+                "lrf",
+                "warmup_epochs",
+                "box",
+                "hsv_h",
+                "hsv_s",
+                "hsv_v",
+                "mosaic",
+                "close_mosaic",
+                "scale",
+                "multi_scale",
+                "extra_channel_init",
+            )
             if getattr(args, option) is not None
         ]
         if unsupported:
@@ -68,7 +123,7 @@ def build_train_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         return kwargs
 
     data = args.data or Path("data/processed/pseudo_rgb/dataset.yaml")
-    return {
+    kwargs = {
         "data": str(data.resolve()),
         "epochs": 30 if args.epochs is None else args.epochs,
         "imgsz": 640 if args.imgsz is None else args.imgsz,
@@ -85,6 +140,71 @@ def build_train_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "val": True if args.val is None else args.val,
         "plots": True if args.plots is None else args.plots,
     }
+    for option in (
+        "optimizer",
+        "lr0",
+        "lrf",
+        "warmup_epochs",
+        "box",
+        "hsv_h",
+        "hsv_s",
+        "hsv_v",
+        "mosaic",
+        "close_mosaic",
+        "scale",
+        "multi_scale",
+    ):
+        value = getattr(args, option)
+        if value is not None:
+            kwargs[option] = value
+    return kwargs
+
+
+def zero_extra_input_channel_weights(trainer: object, base_channels: int = 3) -> None:
+    """Zero new first-layer channels in both the train model and its EMA copy.
+
+    Ultralytics transfers pretrained weights into the first three channels of a
+    wider input convolution and leaves the remaining channels randomly
+    initialized. Zeroing only those new slices makes the expanded model's
+    initial response depend on the pretrained channels alone. The slices remain
+    trainable and receive gradients on the first optimizer step.
+    """
+    import torch
+
+    from ultralytics.utils import LOGGER
+    from ultralytics.utils.torch_utils import unwrap_model
+
+    targets = [("model", trainer.model)]
+    ema = getattr(trainer, "ema", None)
+    if ema is not None and getattr(ema, "ema", None) is not None:
+        targets.append(("ema", ema.ema))
+
+    initialized_channels: int | None = None
+    for target_name, target in targets:
+        unwrapped = unwrap_model(target)
+        try:
+            weight = unwrapped.model[0].conv.weight
+        except (AttributeError, IndexError, TypeError) as error:
+            raise RuntimeError(
+                "Could not locate the first YOLO convolution for extra-channel initialization"
+            ) from error
+        input_channels = int(weight.shape[1])
+        if input_channels <= base_channels:
+            raise RuntimeError(
+                f"--extra-channel-init zero requires more than {base_channels} input channels; "
+                f"the constructed model has {input_channels}"
+            )
+        with torch.no_grad():
+            weight[:, base_channels:].zero_()
+        initialized_channels = input_channels - base_channels
+        LOGGER.info(
+            f"Zero-initialized {initialized_channels} extra input channels in the {target_name} first convolution"
+        )
+    trainer.extra_channel_initialization = {
+        "method": "zero",
+        "base_channels": base_channels,
+        "extra_channels": initialized_channels,
+    }
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -93,6 +213,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
     model_source = str(args.resume.resolve()) if args.resume else (args.model or "yolo26n.pt")
     model = YOLO(model_source)
+    if args.load_weights is not None:
+        model.load(str(args.load_weights.resolve()))
+    if args.extra_channel_init == "zero":
+        model.add_callback("on_pretrain_routine_end", zero_extra_input_channel_weights)
     model.train(**build_train_kwargs(args))
 
 

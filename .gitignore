@@ -14,3 +14,11 @@ runs/
 weights/
 *.pt
 submission*.csv
+
+# Kaggle remote staging (contains weights)
+kaggle_remote/code_dataset/
+kaggle_remote/outputs/
+kaggle_remote/raw_dataset/
+
+# 私有恢复备份包（比赛期间不得外传，且单个约 145MB）
+exports/

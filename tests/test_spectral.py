@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from hsi_detection.spectral import make_pseudo_rgb, x2cube
+from hsi_detection.spectral import make_multispectral_uint8, make_pseudo_rgb, x2cube
 
 
 def test_x2cube_matches_row_major_mosaic_cells() -> None:
@@ -25,3 +25,28 @@ def test_pseudo_rgb_has_expected_shape_and_type() -> None:
     assert image.min() == 0
     assert image.max() == 255
 
+
+def test_make_multispectral_uint8_preserves_requested_order_and_shared_scale() -> None:
+    cube = np.array(
+        [
+            [[0, 10, 20, 30], [40, 50, 60, 70]],
+            [[80, 90, 100, 110], [120, 130, 140, 150]],
+        ],
+        dtype=np.uint16,
+    )
+
+    result = make_multispectral_uint8(
+        cube,
+        band_order=(2, 0, 3, 1),
+        lower_percentile=0,
+        upper_percentile=100,
+    )
+
+    expected = np.rint(cube[:, :, (2, 0, 3, 1)] / 150.0 * 255.0).astype(np.uint8)
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_make_multispectral_uint8_rejects_duplicate_bands() -> None:
+    cube = np.zeros((2, 2, 4), dtype=np.uint16)
+    with pytest.raises(ValueError, match="duplicates"):
+        make_multispectral_uint8(cube, band_order=(0, 1, 1, 2))

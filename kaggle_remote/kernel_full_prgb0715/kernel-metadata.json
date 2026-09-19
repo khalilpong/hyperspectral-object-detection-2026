@@ -1,0 +1,18 @@
+{
+  "id": "zephyrpong/hsi-yolo26m-prgb0715-full",
+  "title": "hsi-yolo26m-prgb0715-full",
+  "code_file": "run_hsi_yolo26.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": [
+    "zephyrpong/hsi-detection-code",
+    "zephyrpong/hsi-competition-raw"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

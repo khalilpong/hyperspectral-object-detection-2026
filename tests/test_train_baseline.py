@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+import torch
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "train_baseline.py"
@@ -66,3 +67,125 @@ def test_resume_rejects_unsupported_checkpoint_override() -> None:
         train_baseline.parse_args(
             ["--resume", "runs/example/weights/last.pt", "--epochs", "40"]
         )
+
+
+def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
+    args = train_baseline.parse_args(
+        [
+            "--optimizer",
+            "AdamW",
+            "--lr0",
+            "0.0002",
+            "--lrf",
+            "0.1",
+            "--warmup-epochs",
+            "1",
+            "--box",
+            "10",
+            "--hsv-h",
+            "0",
+            "--hsv-s",
+            "0",
+            "--hsv-v",
+            "0.2",
+            "--mosaic",
+            "0",
+            "--close-mosaic",
+            "0",
+            "--scale",
+            "0.75",
+            "--multi-scale",
+            "0.25",
+        ]
+    )
+
+    kwargs = train_baseline.build_train_kwargs(args)
+
+    assert kwargs["optimizer"] == "AdamW"
+    assert kwargs["lr0"] == 0.0002
+    assert kwargs["lrf"] == 0.1
+    assert kwargs["warmup_epochs"] == 1.0
+    assert kwargs["box"] == 10.0
+    assert kwargs["hsv_h"] == 0.0
+    assert kwargs["hsv_s"] == 0.0
+    assert kwargs["hsv_v"] == 0.2
+    assert kwargs["mosaic"] == 0.0
+    assert kwargs["close_mosaic"] == 0
+    assert kwargs["scale"] == 0.75
+    assert kwargs["multi_scale"] == 0.25
+
+
+def test_resume_rejects_optimizer_or_augmentation_override() -> None:
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            [
+                "--resume",
+                "runs/example/weights/last.pt",
+                "--lr0",
+                "0.001",
+                "--hsv-s",
+                "0",
+            ]
+        )
+
+
+def test_resume_rejects_extra_channel_initialization() -> None:
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            [
+                "--resume",
+                "runs/example/weights/last.pt",
+                "--extra-channel-init",
+                "zero",
+            ]
+        )
+
+
+def test_resume_rejects_architecture_weight_transfer() -> None:
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            [
+                "--resume",
+                "runs/example/weights/last.pt",
+                "--load-weights",
+                "yolo26s.pt",
+            ]
+        )
+
+
+def test_zero_extra_input_channel_weights_preserves_first_three_channels() -> None:
+    class FirstBlock(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.conv = torch.nn.Conv2d(5, 2, 1, bias=False)
+
+    class Model(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.model = torch.nn.ModuleList([FirstBlock()])
+
+    class Ema:
+        def __init__(self) -> None:
+            self.ema = Model()
+
+    class Trainer:
+        def __init__(self) -> None:
+            self.model = Model()
+            self.ema = Ema()
+
+    trainer = Trainer()
+    with torch.no_grad():
+        trainer.model.model[0].conv.weight.fill_(1.0)
+        trainer.ema.ema.model[0].conv.weight.fill_(2.0)
+
+    train_baseline.zero_extra_input_channel_weights(trainer)
+
+    assert torch.all(trainer.model.model[0].conv.weight[:, :3] == 1.0)
+    assert torch.all(trainer.model.model[0].conv.weight[:, 3:] == 0.0)
+    assert torch.all(trainer.ema.ema.model[0].conv.weight[:, :3] == 2.0)
+    assert torch.all(trainer.ema.ema.model[0].conv.weight[:, 3:] == 0.0)
+    assert trainer.extra_channel_initialization == {
+        "method": "zero",
+        "base_channels": 3,
+        "extra_channels": 2,
+    }

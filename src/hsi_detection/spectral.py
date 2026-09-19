@@ -56,3 +56,39 @@ def make_pseudo_rgb(
             output[:, :, channel] = np.rint(stretched * 255.0).astype(np.uint8)
     return output
 
+
+def make_multispectral_uint8(
+    cube: np.ndarray,
+    band_order: Sequence[int] | None = None,
+    lower_percentile: float = 1.0,
+    upper_percentile: float = 99.0,
+) -> np.ndarray:
+    """Scale a cube with one shared affine transform to preserve band relationships.
+
+    Unlike :func:`make_pseudo_rgb`, this function deliberately uses one low/high
+    pair for all selected channels. This keeps relative cross-band intensity
+    information available to a multispectral model while robustly normalizing
+    each capture's overall exposure.
+    """
+    cube = np.asarray(cube)
+    if cube.ndim != 3:
+        raise ValueError(f"Expected an H x W x C cube, got shape {cube.shape}")
+    if not 0 <= lower_percentile < upper_percentile <= 100:
+        raise ValueError("Percentiles must satisfy 0 <= lower < upper <= 100")
+    if band_order is None:
+        bands = tuple(range(cube.shape[2]))
+    else:
+        bands = tuple(int(band) for band in band_order)
+    if not bands:
+        raise ValueError("At least one band is required")
+    if len(bands) != len(set(bands)):
+        raise ValueError("band_order must not contain duplicates")
+    if min(bands) < 0 or max(bands) >= cube.shape[2]:
+        raise ValueError(f"Band indices {bands} are invalid for {cube.shape[2]} bands")
+
+    selected = cube[:, :, bands].astype(np.float32, copy=False)
+    low, high = np.percentile(selected, [lower_percentile, upper_percentile])
+    if high <= low:
+        return np.zeros_like(selected, dtype=np.uint8)
+    stretched = np.clip((selected - low) / (high - low), 0.0, 1.0)
+    return np.rint(stretched * 255.0).astype(np.uint8)
