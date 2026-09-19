@@ -88,3 +88,13 @@ score = min(1, max_conf + gain * (sum_conf - max_conf) / total_sources)
 ## 结论
 
 支持加成在 2/3/4 模型留出组合上均为正，并且八模型候选只造成极小的 top-300 边界变化；这是当前比继续堆弱成员更有依据的下一次 Public 验证。留出集曾多次错误排序融合组合，所以最终结论仍必须以 Kaggle Public Score 为准。
+
+## 已否决：按类别开关支持票
+
+曾短暂实现按类别覆盖 gain，并用 2/3/4 模型下 `gain=0.125` 的逐类方向做交叉检查；验证后已撤回代码：
+
+- 只对三种组合都正向的 10 类启用 0.125：四模型总分 `0.71070`。
+- 保持全局 0.125、只关闭跨组合平均为负的 `charger_head` 和 `rubik`：`0.71080`。
+- 全类别统一 0.125：`0.71089`。
+
+类别开关都更差，说明 top-300 跨类别排序耦合不能由逐类 AP 差值独立优化。没有生成全测试候选，也不应重复该方向。原始诊断 JSON：`artifacts/ensemble/class_support_consistent_4model_20260919.json`、`artifacts/ensemble/class_support_disable_7_15_4model_20260919.json`。
