@@ -79,3 +79,15 @@ def test_background_runners_do_not_truncate_native_stderr() -> None:
             == expected_count
         )
         assert script.count("Tee-Object -FilePath") == expected_count
+
+
+def test_ensemble_builder_isolates_optional_p1_p99_member() -> None:
+    script = (PROJECT_ROOT / "scripts" / "build_ensemble_submission.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'W_I="${W_I:-0.4}"' in script
+    assert 'if [[ -n "${P1_WEIGHTS:-}" ]]; then' in script
+    assert "m_p010_990_full=${P1_WEIGHTS}@${W_I}" in script
+    assert "#data/processed/hsi16_shared_p010_990" in script
+    assert '"${P1_MODEL[@]}"' in script
