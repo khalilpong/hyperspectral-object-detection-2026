@@ -108,6 +108,56 @@ def test_box_vote_never_merges_different_classes() -> None:
     assert fused_classes.tolist() == [1.0, 2.0]
 
 
+def test_box_vote_support_gain_rewards_independent_agreement() -> None:
+    boxes = np.asarray(
+        [[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0], [20.0, 20.0, 30.0, 30.0]],
+        dtype=np.float32,
+    )
+    classes = np.asarray([2, 2, 2], dtype=np.float32)
+    confidences = np.asarray([0.6, 0.6, 0.65], dtype=np.float32)
+
+    fused_boxes, _, fused_confidences = _box_vote(
+        boxes,
+        classes,
+        confidences,
+        iou_threshold=0.5,
+        max_det=10,
+        source_ids=np.asarray([0, 1, 2]),
+        support_gain=0.5,
+        total_sources=3,
+    )
+
+    assert fused_boxes[0] == pytest.approx([0.0, 0.0, 10.0, 10.0])
+    assert fused_confidences.tolist() == pytest.approx([0.7, 0.65])
+
+
+def test_box_vote_rejects_invalid_support_configuration() -> None:
+    boxes = np.asarray([[0.0, 0.0, 10.0, 10.0]], dtype=np.float32)
+    classes = np.asarray([2], dtype=np.float32)
+    confidences = np.asarray([0.6], dtype=np.float32)
+
+    with pytest.raises(ValueError, match="support_gain"):
+        _box_vote(
+            boxes,
+            classes,
+            confidences,
+            iou_threshold=0.5,
+            max_det=10,
+            support_gain=-0.1,
+        )
+    with pytest.raises(ValueError, match="total_sources"):
+        _box_vote(
+            np.repeat(boxes, 2, axis=0),
+            np.repeat(classes, 2),
+            np.repeat(confidences, 2),
+            iou_threshold=0.5,
+            max_det=10,
+            source_ids=np.asarray([0, 1]),
+            support_gain=0.1,
+            total_sources=1,
+        )
+
+
 def test_normalize_multiscale_requires_distinct_positive_sizes() -> None:
     assert _normalize_multiscale([960, 1024, 960, 1088]) == (960, 1024, 1088)
     with pytest.raises(ValueError, match="at least two distinct"):

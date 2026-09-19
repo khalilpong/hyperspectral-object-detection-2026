@@ -186,12 +186,19 @@ def _box_vote(
     iou_threshold: float,
     max_det: int,
     source_ids: np.ndarray | None = None,
+    support_gain: float = 0.0,
+    total_sources: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Fuse same-class boxes with confidence-weighted coordinate voting.
 
     ``source_ids`` prevents two detections from the same scale from entering one
     cluster. This retains each scale's own NMS decisions while allowing one
     checkpoint's repeated multi-scale observations to tighten coordinates.
+
+    ``support_gain`` optionally adds a small ranking bonus for confidence mass
+    contributed by sources beyond the cluster's strongest source. The bonus is
+    normalized by ``total_sources`` and leaves the legacy max-confidence score
+    byte-for-byte unchanged when it is zero.
     """
     boxes = np.asarray(boxes, dtype=np.float32)
     classes = np.asarray(classes, dtype=np.float32)
@@ -204,12 +211,16 @@ def _box_vote(
         raise ValueError("Fusion IoU must be in (0, 1]")
     if max_det <= 0:
         raise ValueError("max_det must be positive")
+    if not np.isfinite(support_gain) or support_gain < 0.0:
+        raise ValueError("support_gain must be finite and non-negative")
     if source_ids is None:
         source_ids = np.arange(len(boxes), dtype=np.int64)
     else:
         source_ids = np.asarray(source_ids, dtype=np.int64)
         if len(source_ids) != len(boxes):
             raise ValueError("source_ids must have one entry per box")
+    if np.any(source_ids < 0):
+        raise ValueError("source_ids must be non-negative")
 
     valid = (
         np.isfinite(boxes).all(axis=1)
@@ -229,6 +240,11 @@ def _box_vote(
             np.empty(0, dtype=np.float32),
             np.empty(0, dtype=np.float32),
         )
+    observed_sources = len(np.unique(source_ids))
+    if total_sources is None:
+        total_sources = observed_sources
+    if total_sources < observed_sources or total_sources <= 0:
+        raise ValueError("total_sources must cover every observed source")
 
     fused_boxes: list[np.ndarray] = []
     fused_classes: list[float] = []
@@ -240,6 +256,7 @@ def _box_vote(
         weighted_sums: list[np.ndarray] = []
         weight_sums: list[float] = []
         cluster_confidences: list[float] = []
+        cluster_confidence_sums: list[float] = []
         cluster_sources: list[set[int]] = []
         for index in class_indices:
             box = boxes[index]
@@ -264,6 +281,7 @@ def _box_vote(
                 weighted_sums.append(box.astype(np.float64) * weight)
                 weight_sums.append(weight)
                 cluster_confidences.append(confidence)
+                cluster_confidence_sums.append(confidence)
                 cluster_sources.append({source_id})
             else:
                 weighted_sums[best_cluster] += box * weight
@@ -274,11 +292,24 @@ def _box_vote(
                 cluster_confidences[best_cluster] = max(
                     cluster_confidences[best_cluster], confidence
                 )
+                cluster_confidence_sums[best_cluster] += confidence
                 cluster_sources[best_cluster].add(source_id)
 
         fused_boxes.extend(cluster_boxes)
         fused_classes.extend([float(class_id)] * len(cluster_boxes))
-        fused_confidences.extend(cluster_confidences)
+        if support_gain == 0.0:
+            fused_confidences.extend(cluster_confidences)
+        else:
+            fused_confidences.extend(
+                min(
+                    1.0,
+                    maximum
+                    + support_gain * max(total - maximum, 0.0) / total_sources,
+                )
+                for maximum, total in zip(
+                    cluster_confidences, cluster_confidence_sums, strict=True
+                )
+            )
 
     output_boxes = np.asarray(fused_boxes, dtype=np.float32)
     output_classes = np.asarray(fused_classes, dtype=np.float32)
@@ -337,6 +368,7 @@ def _fused_multiscale_predictions(
     *,
     fusion_iou: float,
     max_det: int,
+    support_gain: float = 0.0,
 ) -> Iterator[PredictionArrays]:
     scales = tuple(predictions_by_scale)
     if len(scales) < 2:
@@ -358,6 +390,8 @@ def _fused_multiscale_predictions(
             iou_threshold=fusion_iou,
             max_det=max_det,
             source_ids=source_ids,
+            support_gain=support_gain,
+            total_sources=len(records),
         )
         yield PredictionArrays(
             path=path,
@@ -413,6 +447,15 @@ def main() -> None:
         default=0.65,
         help="IoU threshold for confidence-weighted coordinate voting across scales.",
     )
+    parser.add_argument(
+        "--support-gain",
+        type=float,
+        default=0.0,
+        help=(
+            "Add a normalized confidence-mass bonus from agreeing scales when ranking "
+            "fused boxes. Zero preserves the legacy max-confidence score."
+        ),
+    )
     args = parser.parse_args()
     if args.augment and args.multi_scale:
         parser.error("--augment and --multi-scale are mutually exclusive")
@@ -460,10 +503,13 @@ def main() -> None:
             image_paths,
             fusion_iou=args.fusion_iou,
             max_det=args.max_det,
+            support_gain=args.support_gain,
         )
         inference_description = (
             "multi-scale " + "/".join(str(scale) for scale in scales) + f", vote IoU {args.fusion_iou:g}"
         )
+        if args.support_gain:
+            inference_description += f", support gain {args.support_gain:g}"
     else:
         single_scale_kwargs = {
             **predict_kwargs,

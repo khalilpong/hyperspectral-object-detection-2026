@@ -67,7 +67,7 @@ def _cached_passes(tag, weights, image_dir, scales, cache_dir, predict_kwargs):
     return _by_stem(passes)
 
 
-def _fused(sources, image_paths, fusion_iou, max_det):
+def _fused(sources, image_paths, fusion_iou, max_det, support_gain=0.0):
     """sources: list of (per-path PredictionArrays dict, confidence multiplier)."""
     for path in image_paths:
         records = [(passes[path.stem], weight) for passes, weight in sources]
@@ -78,7 +78,14 @@ def _fused(sources, image_paths, fusion_iou, max_det):
             [np.full(len(r.boxes), i, dtype=np.int64) for i, (r, _) in enumerate(records)]
         )
         fused_boxes, fused_classes, fused_confidences = _box_vote(
-            boxes, classes, confidences, iou_threshold=fusion_iou, max_det=max_det, source_ids=source_ids
+            boxes,
+            classes,
+            confidences,
+            iou_threshold=fusion_iou,
+            max_det=max_det,
+            source_ids=source_ids,
+            support_gain=support_gain,
+            total_sources=len(records),
         )
         yield PredictionArrays(path, fused_boxes, fused_classes, fused_confidences, records[0][0].orig_shape)
 
@@ -100,11 +107,25 @@ def main() -> None:
     parser.add_argument("--conf", type=float, default=0.0001)
     parser.add_argument("--iou", type=float, default=0.70)
     parser.add_argument("--max-det", type=int, default=300)
+    parser.add_argument(
+        "--support-gain",
+        dest="support_gains",
+        nargs="+",
+        type=float,
+        default=[0.0],
+        help=(
+            "Add a normalized confidence-mass bonus from agreeing model/scale sources. "
+            "Pass multiple values for a held-out grid; submission mode accepts one. "
+            "Zero preserves the legacy max-confidence ranking."
+        ),
+    )
     parser.add_argument("--submission", type=Path,
                         help="Write a competition CSV for --images (e.g. test) using the first fusion IoU "
                              "and second weight instead of evaluating held-out labels.")
     parser.add_argument("--images", type=Path, help="Image directory for --submission.")
     args = parser.parse_args()
+    if args.submission is not None and len(args.support_gains) != 1:
+        parser.error("--submission accepts exactly one --support-gain value")
 
     names, val_dir = _dataset_details(args.data)
     if args.submission is not None:
@@ -138,15 +159,18 @@ def main() -> None:
             for s in passes
         ]
 
-    def _label(fusion_iou, weight):
+    def _label(fusion_iou, weight, support_gain):
         tags = "+".join(tag + (f"x{fixed[i]:g}" if i in fixed else "") for i, (tag, _) in enumerate(models))
-        return f"{tags} f{fusion_iou:g} w{weight:g}"
+        return f"{tags} f{fusion_iou:g} w{weight:g} sg{support_gain:g}"
 
     if args.submission is not None:
         weight, fusion_iou = args.second_weights[0], args.fusion_ious[0]
+        support_gain = args.support_gains[0]
         sources = _sources(weight)
         rows, dropped = [], 0
-        for prediction in _fused(sources, image_paths, fusion_iou, args.max_det):
+        for prediction in _fused(
+            sources, image_paths, fusion_iou, args.max_det, support_gain
+        ):
             height, width = prediction.orig_shape
             for box, class_id, confidence in zip(prediction.boxes, prediction.classes, prediction.confidences):
                 clipped = clip_xyxy(box.tolist(), width=width, height=height)
@@ -169,11 +193,21 @@ def main() -> None:
             print(f"{results[-1]['config']:<32} mAP50-95 {record['map50_95']:.5f}", flush=True)
         if len(models) < 2:
             continue
-        for weight in args.second_weights:
-            record = _evaluate_predictions(_fused(_sources(weight), image_paths, fusion_iou, args.max_det), names)
-            label = _label(fusion_iou, weight)
-            results.append({"config": label, **record})
-            print(f"{label:<32} mAP50-95 {record['map50_95']:.5f}", flush=True)
+        for support_gain in args.support_gains:
+            for weight in args.second_weights:
+                record = _evaluate_predictions(
+                    _fused(
+                        _sources(weight),
+                        image_paths,
+                        fusion_iou,
+                        args.max_det,
+                        support_gain,
+                    ),
+                    names,
+                )
+                label = _label(fusion_iou, weight, support_gain)
+                results.append({"config": label, **record})
+                print(f"{label:<32} mAP50-95 {record['map50_95']:.5f}", flush=True)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
