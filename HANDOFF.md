@@ -82,19 +82,11 @@ kaggle kernels status zephyrpong/<slug>
 > ⚠️ Kaggle 登录（OAuth）**约 12 小时过期**，报 `Permission 'kernels.get' was denied` 其实是掉登录了，
 > 用 `kaggle auth login` 重新登录（会开浏览器，需要人操作）。
 
-### ⚠️ 接手前先处理 git
+### git 状态
 
-**截至交接时，大量改动还没提交到 git**，其中包括当前最佳方案必需的核心文件：
-
-- `scripts/prepare_multispectral.py`（生成 16 波段数据，**没有它无法复现最佳成绩**）
-- `kaggle_remote/`（远程训练流水线和 Notebook 生成器）
-- 本文档、`docs/` 下的多份文档、`experiments/` 下的实验记录
-
-建议接手后先检查并提交：
-
-```bash
-git status
-```
+**核心代码、文档、实验记录已在 2026-09-19 提交到本地仓库**（提交 `a8789d8` 代码、`4442f0d` 文档），**没有 push**。
+远程是 `origin = https://github.com/khalilpong/hyperspectral-object-detection-2026.git`。
+**push 之前先确认这个 GitHub 仓库是私有的**：文档里有比赛方法和成绩细节，比赛期间不宜公开。改完东西记得再 `git status` 看一眼，别让新文件漏提交。
 
 以下内容**已经配置为不进 git**，不要手动加进去：
 

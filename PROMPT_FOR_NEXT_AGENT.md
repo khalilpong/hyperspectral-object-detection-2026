@@ -55,9 +55,9 @@
 4. **不要重训已有的模型**：所有成员的权重都已下载在 `kaggle_remote/outputs/*/…/last.pt` 和 `runs/*/weights/last.pt`，重训只会白耗额度。
 5. **D 盘空间**：目前剩约 140GB。生成新数据集前先看剩余空间；**删除任何文件前先告诉我**，特别是 `data/raw/`（6GB 原始比赛 zip）、
    `data/processed/hsi16_shared_p005_995`（最佳模型的数据）、`runs/`、`kaggle_remote/outputs/`（权重）——这些都不能删。
-6. **不要擅自 `git commit`/`git push`**。注意：**大量重要改动还没提交**（`scripts/prepare_multispectral.py`、`scripts/eval_ensemble.py`、
-   `scripts/build_ensemble_submission.sh`、`kaggle_remote/`、`docs/`、`experiments/`），要提交时先问我；提交前用 `git status` 确认
-   没有把 `exports/`、`data/`、`runs/`、`*.pt`、`submission*.csv`、`kaggle_remote/outputs|code_dataset|raw_dataset` 加进去（已在 .gitignore，不要强加）。
+6. **git**：核心代码和文档已在 09-19 提交到本地仓库（**没有 push**）。之后你改了东西可以 `git commit`（提交前 `git status` 确认
+   没有把 `exports/`、`data/`、`runs/`、`*.pt`、`submission*.csv`、`kaggle_remote/outputs|code_dataset|raw_dataset` 加进去，它们已在 .gitignore，不要强加）。
+   **`git push` 必须先问我**（我还没确认远程 GitHub 仓库是私有的）。
 7. **花提交额度和 Kaggle GPU 额度前先经我同意**（提交是不可撤回的；GPU 每周额度有限）。最后一天不要留到最后才试。
 8. **比赛规则**：使用任何外部数据或非预训练权重前，先让我确认比赛规则允许。目前只用了官方数据和 Ultralytics 的 yolo26 预训练权重。
 9. 主脚本 `kaggle_remote/run_hsi_yolo26.py` 改动后，必须同步到 `kaggle_remote/code_dataset/` 并 `kaggle datasets version`，
