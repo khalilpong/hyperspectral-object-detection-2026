@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-19 15:02（北京时间）
+> 最后更新：2026-09-19 22:00（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -14,7 +14,7 @@
 - 训练全部在 **Kaggle 免费 GPU** 上跑（脚本已打通，不需要租服务器）。
 - 所有成员在测试集上的预测都缓存好了，**调融合权重、换融合算法不需要 GPU，约 10 分钟一个**（见下"下一步"）。
 - 2026-09-19 新增“多来源支持票轻量加成”：`gain=0.125` 在 2/3/4 模型留出组合均优于旧算法，八模型候选已生成并校验；详见 `experiments/ensemble-support-gain-20260919.md`。当天 Kaggle 3 次额度已用完，页面显示约 18 小时后重置，尚未提交新候选。
-- 2026-09-19 15:00 已启动一个真正不同的强成员：YOLO26m、HSI16、共享 P1–P99 归一化、全量 3000、batch 8、30 epoch。私有 Notebook `zephyrpong/hsi-yolo26m-p010-990-full` 当前运行中；不会自动提交。详见 `experiments/training-hsi16-p010-990-20260919.md`。
+- 2026-09-19 的 P1–P99 新成员已完整训练并收取：YOLO26m、HSI16、全量 3000、batch 8、30 epoch，远端 `result=success`，不会自动提交。第九成员 `W_I=0.2/0.4` 两个候选均已生成并校验；它们相对首选 support 候选分别改变约 12.6%/14.1% 的精确框，不能视为低风险微调。私有留出 Notebook `zephyrpong/hsi-yolo26m-p010-990-ablation` 正在运行，用于决定明天是否把 P1 候选排入提交顺序。详见 `experiments/training-hsi16-p010-990-20260919.md`。
 
 ## 👉 接手后第一件事
 
@@ -43,7 +43,7 @@
 
 1. **额度重置后先验证支持票候选**：`submissions/submission_ens8_b368_b0715_ms7_f070_sg0125.csv`，SHA-256 `A4158EF7...0C410`。它只改变最终置信度排序，留出集跨 2/3/4 模型稳定为正；上传和最终 Submit 前需用户当时确认。
    第二顺位候选是 `submissions/submission_ens8_b075_d070_sg0125_ms7_f070.csv`（SHA-256 `4FFE084D...6E28`）：在支持票基础上把 B/D 权重调为 0.75/0.7，留出 0.71180，但会改变约 8.15 万个框，风险高于纯支持票；详见 `experiments/ensemble-weight-sweep-supportgain-20260919.md`。
-2. **等待并收取 P1–P99 新成员**：查询 `kaggle kernels status zephyrpong/hsi-yolo26m-p010-990-full`；成功后下载输出、核对 `status.json`/权重/提交文件，再为它生成独立缓存并先做低权重融合。不要直接提交单模型，也不要覆盖旧 cache tag。本机 `data/processed/hsi16_shared_p010_990` 已完整生成；`build_ensemble_submission.sh` 可通过 `P1_WEIGHTS=... W_I=0.4` 显式加入第九成员。
+2. **等待 P1–P99 留出验证后再决定第九成员**：全量模型、独立 cache 和 `W_I=0.2/0.4` 候选都已完成。先查询 `kaggle kernels status zephyrpong/hsi-yolo26m-p010-990-ablation` 并下载验证结果；若相对旧 P0.5–P99.5 的同规格 m 模型没有明确正增益，不提交 P1 候选。候选文件与哈希见 `experiments/training-hsi16-p010-990-20260919.md`。
 3. **调成员权重**（零 GPU，每个约 10 分钟）：`W_G=0.5 bash scripts/build_ensemble_submission.sh submissions/try.csv`，
    每个成员的系数都可以用环境变量 `W_B`~`W_H` 覆盖，`FUSION_IOU` 也可以调。现在的系数（1.0/0.6/0.8/0.6/0.5/0.5/0.8/0.8）是拍脑袋定的。
    一次改一个系数，出文件，提交，看分数。当前已备好 G `0.8→0.4` 单变量文件，见上述实验记录。
@@ -105,6 +105,7 @@ kaggle kernels status zephyrpong/<slug>
 | 私有数据集 `zephyrpong/hsi-detection-code` | 代码（平铺）+ 划分清单 + yolo26m/s 预训练权重 + 主脚本 |
 | 私有数据集 `zephyrpong/hsi-competition-raw` | 原始比赛 zip（比赛数据无法直接挂载进 Notebook，见 Kaggle 文档第 5 条坑） |
 | Notebook `hsi-yolo26m-{smoke,ablation,full}`、`hsi-yolo26l-ablation` | 16 波段 m / l 的各次训练，产物在 `kaggle_remote/outputs/` 对应目录 |
+| Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full 已完成并下载，ablation 于 09-19 21:36 后运行，用来做固定划分比较 |
 | Notebook `hsi-yolo26m-prgb-{ablation,full}`、`prgb368-full`、`prgb0715-full` | 伪RGB（5/8/13、3/6/8、0/7/15）的训练，产物同上 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
