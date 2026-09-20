@@ -23,10 +23,10 @@
 
 ### 当前状态（以 HANDOFF.md 为准，这里是摘要）
 
-- Kaggle 账号 `zephyrpong`。排行榜显示最高 `0.65091` 来自八模型融合，**违反官方单模型规则，只能视为历史不合规记录**。当前已验证合规的 Public 最佳是单 YOLO26m checkpoint 七尺度 `0.62953`。截止 **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）**。
+- Kaggle 账号 `zephyrpong`。排行榜显示最高 `0.65091` 来自八模型融合，**违反官方单模型规则，只能视为历史不合规记录**。当前已验证合规的 Public 最佳是单 YOLO26m checkpoint 七尺度支持票 `0.63066`（ref `56379896`）。截止 **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）**。
 - 官方允许同一训练模型的 TTA / multi-scale inference，禁止不同训练模型的 voting、weighted fusion 和 post-NMS fusion。任何 `submission_ens*.csv` 都不得再上传或选为最终提交。
-- 合规候选 `submissions/submission_single_m_hsi16_ms7_f070_sg0125.csv` 已生成：同一 YOLO26m checkpoint 七尺度，留出 `0.70404 -> 0.70544`，94,094 detections，SHA-256 `E4ED7BBC...3D266`，尚未上传。
-- 私有固定划分 Kernel `zephyrpong/hsi-yolo26m-xczero-ablation` 已在运行；只测试额外 13 个输入通道 `random -> zero`，门槛 `0.70443`，不自动提交。
+- 合规候选 `submissions/submission_single_m_hsi16_ms7_f070_sg0125.csv` 已成功提交：同一 YOLO26m checkpoint 七尺度，Public `0.63066`，较合规基线 `0.62953` 提升 `+0.00113`；ref `56379896`，94,094 detections，SHA-256 `E4ED7BBC...3D266`。
+- 私有固定划分 Kernel `zephyrpong/hsi-yolo26m-xczero-ablation` 于 2026-09-20 12:14 仍在运行；只测试额外 13 个输入通道 `random -> zero`，门槛 `0.70443`，不自动提交。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
 - Kaggle GPU：免费账号每周约 30 小时，本周已用约 20 小时。训一个 yolo26m 全量模型约 2.5 小时。
