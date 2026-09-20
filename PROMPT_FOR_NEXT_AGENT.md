@@ -28,16 +28,18 @@
 - 当前合规最佳 `submissions/submission_single_m_hsi16_ms7_f074_sg0125.csv` 已成功提交：同一 YOLO26m checkpoint 七尺度，`fusion_iou=0.74`、`support_gain=0.125`，Public `0.63072`；ref `56392305`，98,556 detections，SHA-256 `E6F5BC18...2CB48E`。它只比前一版 `f0.70` 的 `0.63066` 高 `+0.00006`，说明当前 checkpoint 后处理已接近饱和。
 - zero-init fixed split 最佳 `0.69690`，object-crop fixed split `0.69772`；两者均低于旧同规格 `0.70143` 和门槛 `0.70443`，已否决，不跑全量、不提交。
 - SpectralStem 本地链路门禁已通过，私有 fixed 2400/600 消融也已正常完成，但标准 full-val 最佳/最终仅 `0.69930`，低于旧同规格 `0.70143` 和门槛 `0.70443`。该路线已否决：不跑全量、不上传其测试 CSV。
+- 显式 horizontal-flip-only 已完成同 checkpoint 固定划分验证：cache control 通过，但最佳七尺度+flip 仅 `0.70587796`，相对 supported-full 只增 `+0.00016978 < +0.001`，已否决，不生成或提交候选。
+- 普通 HSI16 YOLO26m 延长到 45 轮的 fixed 2400/600 消融已完成：最佳/最终 epoch 45 仅 `0.69899`，比 e30 的 `0.70143` 低 `0.00244`，比 `0.70443` 门槛低 `0.00544`。不启动 full-data e45，不上传其测试 CSV。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
-- Kaggle GPU：免费账号每周约 30 小时，本周已用约 20 小时。训一个 yolo26m 全量模型约 2.5 小时。
+- Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 本次又使用约 3 小时。启动任何新训练前先实时复核余额。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. SpectralStem fixed split 已以 `0.69930 < 0.70443` 结束并否决；不要重复启动、跑全量或上传其测试 CSV。
-2. 当前 HSI16 NPY 的物理波段顺序是 `5,8,13,0,1,...`，所以 5/8/13 identity 初始化接数组通道索引 `(0,1,2)`；实现与 checkpoint metadata 已核验一致。
-3. 当前没有正在运行或已授权的新训练；同规格新 seed 只可作为方差对照，启动前先说明 GPU 成本并征得用户确认。
-4. 继续扫 fusion/NMS、zero-init、object-crop、SpectralStem、旧 checkpoint tile TTA 均不再投入。若提出 `cls_pw` 或 flip-only，仍须作为单变量验证，不得直接全量训练。
+1. e45 fixed split 已以 `0.69899 < 0.70443` 结束并否决；不要启动 full-data e45，也不要上传其测试 CSV。
+2. Horizontal-flip-only 已完成但未过 `+0.001` 门禁；不要重复推理、生成正式候选或提交。
+3. 当前没有正在运行或已授权的新训练；温和 `cls_pw`、random-affine `scale` 或同规格新 seed 只能先做单变量 fixed split，启动前说明 GPU 成本并征得用户确认。
+4. 继续扫 fusion/NMS、zero-init、object-crop、SpectralStem、e45、horizontal-flip-only 和旧 checkpoint tile TTA 均不再投入。
 5. 对任何新候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
 
 **很重要的方法论（这是这个项目用分数换来的）**：
@@ -58,7 +60,7 @@
 4. **不要重训已有的模型**：所有成员的权重都已下载在 `kaggle_remote/outputs/*/…/last.pt` 和 `runs/*/weights/last.pt`，重训只会白耗额度。
 5. **D 盘空间**：目前剩约 140GB。生成新数据集前先看剩余空间；**删除任何文件前先告诉我**，特别是 `data/raw/`（6GB 原始比赛 zip）、
    `data/processed/hsi16_shared_p005_995`（最佳模型的数据）、`runs/`、`kaggle_remote/outputs/`（权重）——这些都不能删。
-6. **git**：核心代码和文档已在 09-19 提交到本地仓库（**没有 push**）。之后你改了东西可以 `git commit`（提交前 `git status` 确认
+6. **git**：核心代码和文档持续提交到本地仓库（最新提交用 `git log -1 --oneline` 查看，**没有 push**）。之后你改了东西可以 `git commit`（提交前 `git status` 确认
    没有把 `exports/`、`data/`、`runs/`、`*.pt`、`submission*.csv`、`kaggle_remote/outputs|code_dataset|raw_dataset` 加进去，它们已在 .gitignore，不要强加）。
    **`git push` 必须先问我**（我还没确认远程 GitHub 仓库是私有的）。
 7. **花提交额度和 Kaggle GPU 额度前先经我同意**（提交是不可撤回的；GPU 每周额度有限）。最后一天不要留到最后才试。

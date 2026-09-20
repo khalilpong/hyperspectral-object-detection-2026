@@ -2,7 +2,7 @@
 
 ## 结论先行
 
-当前奖项合规的 Public 最佳是 `0.63072`，目标 `0.66` 仍差 `0.02928`。这是一次显著跃升，不能承诺一定达到。`fusion_iou 0.70 -> 0.74` 的最后一次受控后处理检查只带来 Public `+0.00006`，说明继续细扫 NMS/融合参数不足以跨越差距。下一条主线应改变单模型的光谱表示能力，同时继续用固定 2400/600 门禁控制 GPU 成本。
+当前奖项合规的 Public 最佳是 `0.63072`，目标 `0.66` 仍差 `0.02928`。这是一次显著跃升，不能承诺一定达到。`fusion_iou 0.70 -> 0.74` 的最后一次受控后处理检查只带来 Public `+0.00006`；随后显式 horizontal-flip-only 和 YOLO26m 延长到 45 轮也都未过门禁。低成本推理与单纯延长训练已基本榨干，下一条主线若继续，必须是新的单模型训练变量，并继续用固定 2400/600 门禁控制 GPU 成本。
 
 执行顺序：
 
@@ -10,7 +10,9 @@
 2. object-crop 固定划分已完成并否决：`0.69772 < 0.70443`；当前 checkpoint 的重叠切片推理也已否决；
 3. 同 checkpoint `fusion_iou=0.74` 已提交，Public `0.63072`，只比 `f0.70` 高 `0.00006`；停止继续细扫后处理；
 4. `SpectralStem 16→3→YOLO26m` 的本地链路通过，但 fixed split 最佳/最终仅 `0.69930 < 0.70443`，已否决且不跑全量；
-5. 新 seed 的同规格 YOLO26m 只可作为方差对照；当前没有已授权的新训练，任何 GPU 运行和 Kaggle Submit 仍需单独确认。
+5. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 仅比 supported-full 高 `+0.00016978 < +0.001`，已否决；
+6. 同规格 YOLO26m 45 轮 fixed split 已完成：最佳/最终 `0.69899 < 0.70443`，不启动全量训练；
+7. 当前没有正在运行或已授权的新训练，任何新 GPU 运行和 Kaggle Submit 仍需单独确认。
 
 ## 合规边界（事实）
 
@@ -45,7 +47,7 @@
 
 ### 已否定方向
 
-本项目已有实测负结果：`imgsz=1280`、训练期 multi-scale、P2 head、close-mosaic=20、box loss=10、P1–P99、伪标签、YOLO26l。它们不应在截止前重复消耗 GPU。详见 [HANDOFF.md](../HANDOFF.md) 与 [experiments.csv](experiments.csv)。
+本项目已有实测负结果：`imgsz=1280`、训练期 multi-scale、P2 head、close-mosaic=20、box loss=10、P1–P99、伪标签、YOLO26l、SpectralStem、horizontal-flip-only，以及同规格 YOLO26m 单纯延长到 45 轮。它们不应在截止前重复消耗 GPU。详见 [HANDOFF.md](../HANDOFF.md) 与 [experiments.csv](experiments.csv)。
 
 ## 已实现的对象裁剪
 
@@ -93,6 +95,22 @@
 - 生成的 1000 图测试 CSV 通过本地结构校验（44,367 detections），但这不是 Public 分数，也没有上传比赛。
 - `best.pt` SHA-256：`E629E810103CB703BB97EFA110FD6382425A9CAF8337E2A9CB38348281C269B0`；`last.pt` SHA-256：`7AC65DCAC5D1439E3C1667E0E10A8F00737670FABB79AF7243E3745A8D86970D`。两者均恢复出 `channels=16` 与一致的 stem metadata。
 
+### Horizontal-flip-only 结果：否决
+
+- 固定 600 张、同一个 e30 YOLO26m checkpoint；只新增一次 `1024` 水平翻转推理，16 个通道一起翻转，预测框按 `x1=W-x2, x2=W-x1` 映射回原图。
+- 七尺度 supported-full cache control 精确复现 `0.7057081826`，与预期只差 `2.60e-9`，因此对照有效。
+- 单尺度 `1024` 原图+flip 有正向变化，但加入当前七尺度最佳方案后，最佳仅为 `fusion_iou=0.65`、`support_gain=0.125` 的 `0.7058779597`，相对 supported-full 只增 `+0.0001697771`。
+- 该增益低于预设 `+0.001` 推理门禁，判定否决；不生成正式候选、不做比赛提交。结果文件：`artifacts/inference_mode_validation/m_ablation_flip_only_20260921.json`，SHA-256 `49FA5146E4C1392F71C2D9BFE2B3609F742D3F85B2AAC29D9A855D7A4650F904`。
+
+### YOLO26m 45 轮结果：否决
+
+- 私有 Notebook `zephyrpong/hsi-yolo26m-ablation` 版本 2 正常完成；配置保持 HSI16、固定 2400/600、`imgsz=1024`、batch 8、workers 2、seed 2026，唯一训练变量是 `epochs 30→45`。
+- 最佳与最终均为 epoch 45：`mAP50-95=0.69899`、`mAP50=0.95899`。相对同规格 e30，mAP50 提升 `+0.00572`，但 mAP50-95 下降 `-0.00244`；相对全量门槛仍差 `0.00544`。训练 CSV/日志没有 mAP75 字段，不能补写该指标。
+- epochs 31–45 的 mAP50-95 均值为 `0.69522`、总体标准差 `0.00318`；`0/15` 轮超过 e30 的 `0.70143`，也没有任何一轮达到 `0.70443`。后期缓慢上升不改变门禁结论。
+- 类别层面相对 e30：`e-bike +0.037` 最大，但 `people -0.026`、`orange_plastic -0.020`、`charger_head -0.017` 等退化；粗召回改善没有转化为严格 IoU 总指标提升。
+- 1000 图测试 CSV 通过本地结构校验（36,080 detections），但没有上传比赛，也没有 Public 分数。`best.pt` SHA-256 `F7F11CFC1A5AA2A6995B93A76BAAFC70E651F7D258F8D2FB0E76AFF6D33864B0`；`last.pt` SHA-256 `C5E41C051DF775020A7D9C5F9C8D44624A576C97E1784E8DA832D14F37E89AF1`。
+- 结论：门禁失败，不启动已预留的 full-data 45 轮训练，不生成或提交该路线的比赛候选。
+
 ## 已实现的同 checkpoint 切片推理
 
 - tile：原图坐标 `128×256`；
@@ -128,16 +146,18 @@
 | object-crop fixed split | 标准 600 full-val mAP50-95 `>=0.70443` | `0.69772`，否决 | 停止该训练路线 |
 | tile TTA | 相对同 checkpoint、同 evaluator 的 full baseline `>=+0.003`，且 cache control 通过 | `-0.00807`，否决 | 不用于全量/提交 |
 | SpectralStem fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69930`，否决 | 不跑全量、不提交测试 CSV |
+| horizontal-flip-only | cache control 通过，且相对 supported-full mAP50-95 `>=+0.001` | `0.70587796`，仅 `+0.00016978`，否决 | 不生成正式候选、不提交 |
+| YOLO26m e45 fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69899`，否决 | 不跑 full-data e45 |
 | full training | status success、权重和日志完整、单 checkpoint | 无新候选 | 不生成正式候选 |
 | final CSV | 1000/1000 图、0 非法框、独立校验通过 | f0.74 已通过并提交 | 不上传 |
 | Kaggle Submit | 用户在动作时明确确认，且实时额度已复核 | ref `56392305` 已完成 | 不提交 |
 
 ## 备选路线及优先级
 
-1. `SpectralStem 16→3→YOLO26m`：fixed split 已以 `0.69930` 否决，不再投入全量训练。
-2. 新 seed 的同规格 YOLO26m：只用于估计固定划分方差，仍按 `>=0.70443` 门禁；它没有正向先验，启动前必须重新取得 GPU 授权。
-3. 温和 `cls_pw=0.25/0.5`：Ultralytics 8.4.147 原生支持，工程风险小，但只影响分类 BCE，未直接解决定位主因。
-4. 显式 horizontal-flip-only：尚未独立测试，只能先在固定 600 张上做同 checkpoint 对照；内置 `augment=True` 已包含缩放+水平翻转且整体为负，不能把该方向当作已有正证据。
+1. `SpectralStem`、horizontal-flip-only 与同规格 e45 均已被固定划分门禁否决，不再投入全量训练或提交。
+2. 温和 `cls_pw=0.25/0.5`：Ultralytics 8.4.147 原生支持，工程风险小，但只影响分类 BCE，未直接解决定位主因；若要运行仍需新的 GPU 授权。
+3. 新 seed 的同规格 YOLO26m：只用于估计固定划分方差，没有正向增益先验；启动前必须重新取得 GPU 授权。
+4. 温和 random-affine `scale` 单变量：不同于已否决的 training-time multi-scale，尚未做固定划分对照，但收益不确定，且不能与其它变量同时改。
 5. 同 YOLO family 蒸馏：最终部署学生模型，可能有收益，但 teacher forward 增加显存与时间，且需要先重新核对当前版本的官方支持边界。[Ultralytics knowledge distillation guide](https://docs.ultralytics.com/guides/knowledge-distillation)
 6. KD-DETR / RT-DETR：研究上有增益，但检测 query/feature 对齐和 16 通道迁移工作量高。KD-DETR 的贡献不是简单接入任意 teacher logits；RT-DETR 的 COCO 结果也不能外推到本数据。[KD-DETR, CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/html/Wang_KD-DETR_Knowledge_Distillation_for_Detection_Transformer_with_Consistent_Distillation_Points_CVPR_2024_paper.html)、[RT-DETR paper](https://arxiv.org/abs/2304.08069)、[official RT-DETR repository](https://github.com/lyuwenyu/RT-DETR)
 
@@ -165,6 +185,22 @@
   --tile-size 128 256 --tile-stride 96 192 --tile-imgsz 1024 `
   --tile-fusion-ious 0.55 0.60 0.65 --tile-support-gains 0 `
   --expected-full-map 0.704035 --control-tolerance 0.0002 --minimum-gain 0.003
+```
+
+复用七尺度 full cache 验证 horizontal-flip-only：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\eval_flip_tta.py `
+  --weights kaggle_remote\outputs\ablation\kaggle_ablation_yolo26m_e30\last.pt `
+  --data data\processed\hsi16_shared_p005_995\dataset.yaml `
+  --full-cache artifacts\ensemble_cache\m.pkl `
+  --flip-cache artifacts\flip_tta_cache\m_ablation_hflip_i1024.pkl `
+  --output artifacts\inference_mode_validation\m_ablation_flip_only_20260921.json `
+  --imgsz 1024 --batch 1 --device 0 `
+  --full-fusion-iou 0.74 --full-support-gain 0.125 `
+  --flip-fusion-ious 0.55 0.60 0.65 0.70 0.74 0.78 0.82 `
+  --flip-support-gains 0 0.125 `
+  --expected-full-map 0.70570818 --control-tolerance 0.0002 --minimum-gain 0.001
 ```
 
 这些是受控实验，不是达到 `0.66` 的保证。任何增益都必须先由固定划分、同 evaluator 和单 checkpoint 证据支持，再决定是否消耗全量训练与提交额度。

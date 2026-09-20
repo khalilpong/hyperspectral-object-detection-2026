@@ -7,8 +7,11 @@ from scripts.predict_submission import (
     PredictionArrays,
     _batches,
     _box_vote,
+    _collect_horizontal_flip_predictions,
     _collect_tiled_predictions,
     _fused_full_and_tiled_predictions,
+    _fused_prediction_sources,
+    _horizontal_flip_xyxy,
     _normalize_multiscale,
     _npy_prediction_batches,
     _numeric_paths,
@@ -68,6 +71,76 @@ def test_npy_prediction_batches_reject_wrong_channels(tmp_path: Path) -> None:
                 predict_kwargs={},
             )
         )
+
+
+def test_horizontal_flip_xyxy_uses_continuous_image_boundaries() -> None:
+    boxes = np.asarray(
+        [[20, 10, 40, 30], [0, 0, 5, 50], [95, 0, 100, 50]],
+        dtype=np.float32,
+    )
+
+    flipped = _horizontal_flip_xyxy(boxes, width=100)
+
+    assert flipped.tolist() == [
+        [60.0, 10.0, 80.0, 30.0],
+        [95.0, 0.0, 100.0, 50.0],
+        [0.0, 0.0, 5.0, 50.0],
+    ]
+    assert _horizontal_flip_xyxy(flipped, width=100) == pytest.approx(boxes)
+    assert _horizontal_flip_xyxy(np.empty((0, 4)), width=100).shape == (0, 4)
+
+
+def test_collect_horizontal_flip_predictions_maps_boxes_back_and_uses_contiguous_input(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "3.npy"
+    source = np.arange(2 * 4 * 16, dtype=np.uint8).reshape(2, 4, 16)
+    np.save(path, source, allow_pickle=False)
+
+    class FakeTensor:
+        def __init__(self, values: np.ndarray) -> None:
+            self.values = values
+
+        def detach(self) -> "FakeTensor":
+            return self
+
+        def cpu(self) -> "FakeTensor":
+            return self
+
+        def numpy(self) -> np.ndarray:
+            return self.values
+
+    class FakeBoxes:
+        xyxy = FakeTensor(np.asarray([[0.5, 0.0, 2.5, 2.0]], dtype=np.float32))
+        cls = FakeTensor(np.asarray([4.0], dtype=np.float32))
+        conf = FakeTensor(np.asarray([0.75], dtype=np.float32))
+
+    class FakeResult:
+        orig_shape = (2, 4)
+        boxes = FakeBoxes()
+
+    class FakeModel:
+        def predict(self, source: list[np.ndarray], **kwargs: object) -> list[FakeResult]:
+            assert len(source) == 1
+            assert source[0].flags.c_contiguous
+            assert np.array_equal(source[0], source_array[:, ::-1, :])
+            assert kwargs["augment"] is False
+            return [FakeResult()]
+
+    source_array = source
+    predictions = _collect_horizontal_flip_predictions(
+        FakeModel(),  # type: ignore[arg-type]
+        [path],
+        channels=16,
+        batch_size=1,
+        predict_kwargs={"imgsz": 1024},
+    )
+
+    record = predictions[path]
+    assert record.orig_shape == (2, 4)
+    np.testing.assert_allclose(record.boxes, [[1.5, 0.0, 3.5, 2.0]])
+    assert record.classes.tolist() == [4.0]
+    assert record.confidences.tolist() == pytest.approx([0.75])
 
 
 def test_box_vote_averages_same_class_boxes_from_different_scales() -> None:
@@ -254,3 +327,31 @@ def test_fuse_full_and_tile_predictions_uses_one_checkpoint_sources() -> None:
         [10.571428, 10.571428, 20.571428, 20.571428]
     )
     assert fused[0].confidences.tolist() == pytest.approx([0.8])
+
+
+def test_fused_prediction_sources_reject_inconsistent_shapes() -> None:
+    path = Path("3.npy")
+    first = PredictionArrays(
+        path=path,
+        boxes=np.asarray([[10, 10, 20, 20]], dtype=np.float32),
+        classes=np.asarray([1], dtype=np.float32),
+        confidences=np.asarray([0.6], dtype=np.float32),
+        orig_shape=(100, 180),
+    )
+    second = PredictionArrays(
+        path=path,
+        boxes=np.asarray([[10, 10, 20, 20]], dtype=np.float32),
+        classes=np.asarray([1], dtype=np.float32),
+        confidences=np.asarray([0.8], dtype=np.float32),
+        orig_shape=(100, 181),
+    )
+
+    with pytest.raises(RuntimeError, match="Inconsistent original shapes"):
+        list(
+            _fused_prediction_sources(
+                [{path: first}, {path: second}],
+                [path],
+                fusion_iou=0.5,
+                max_det=10,
+            )
+        )

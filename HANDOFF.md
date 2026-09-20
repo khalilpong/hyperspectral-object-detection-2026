@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-20 23:03（北京时间）
+> 最后更新：2026-09-21 04:37（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -15,12 +15,14 @@
 - object-crop 私有消融已完成并否决：标准 full-val `0.69772`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交，也不扩展 tile。
 - P1–P99 已否决：固定划分 `0.69668 < 0.70143`；不要重复训练或提交其第九成员候选。
 - SpectralStem 私有消融已完成并否决：标准 full-val 最佳与最终均为 epoch 30 的 `0.69930`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交。生成的测试 CSV 仅通过本地结构校验，未上传比赛。
+- 显式 horizontal-flip-only 已完成并否决：cache control 精确通过，但当前七尺度最佳 + flip 最高 `0.70587796`，只比 supported-full 高 `+0.00016978`，未达到 `+0.001` 推理门禁；不生成、不提交该候选。
+- 同规格 YOLO26m 45 轮 fixed split 已完成并否决：最佳/最终均为 epoch 45 的 `0.69899`，比 e30 的 `0.70143` 低 `0.00244`，比全量门槛低 `0.00544`；不启动 full-data 45 轮训练，测试 CSV 仅通过本地结构校验，未上传比赛。
 
 ## 👉 接手后第一件事
 
-1. SpectralStem 已完成并错过 `0.70443` 门槛，因此停止该路线；不要启动其全量 3000 张训练，也不要上传它生成的测试 CSV。
-2. 当前没有正在运行或已授权的新训练。若要继续，先向用户说明候选变量、固定划分门槛和 GPU 成本，再取得新的明确授权。
-3. 可讨论的低优先级对照是同规格 YOLO26m 新 seed；它只有估计方差的价值，没有正向增益证据。任何新训练和 Kaggle Submit 均需动作时确认。
+1. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练，也不要上传它生成的测试 CSV。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
+2. 当前没有正在运行或已授权的新训练。若要继续，先向用户说明候选变量、固定划分门禁和 GPU 成本，再取得新的明确授权。
+3. 仍可讨论的单变量只有温和 `cls_pw`、random-affine `scale` 或新 seed 方差对照；都没有足够正向证据，任何新训练和 Kaggle Submit 均需动作时确认。
 
 ### 成绩与合规状态
 
@@ -34,10 +36,10 @@
 
 ### 下一步可以试的（按优先级）
 
-1. `SpectralStem` fixed split 已完成：物理波段 5/8/13 正确映射到数组通道索引 `(0,1,2)`，但标准 full-val 仅 `0.69930 < 0.70443`，路线已停止。
-2. 新 seed 的同规格 YOLO26m 只可作为方差对照，没有正向先验；启动前仍需用户确认 GPU 成本。
-3. 温和 `cls_pw` 或显式 horizontal-flip-only 只能作为新的单变量 fixed-split/离线验证候选；现有证据不足，不能直接全量训练或提交。
-4. zero-init、object-crop、SpectralStem、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
+1. YOLO26m e45 fixed split 已完成但只有 `0.69899`，低 e30 `0.00244`；门禁失败，不跑 full-data e45。
+2. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 只增 `+0.00016978`，低于 `+0.001` 门禁，不再投入。
+3. 温和 `cls_pw` 或 random-affine `scale` 只能作为新的单变量 fixed-split 候选；现有证据不足，不能直接全量训练或提交。新 seed 仅有估计方差的价值。
+4. zero-init、object-crop、SpectralStem、e45、horizontal-flip-only、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
 5. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
 > 提交额度每天 3 次，北京时间 08:00 重置。19:27 已用完当日最后一次，下一次提交须等重置后再实时复核。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
@@ -75,7 +77,7 @@ kaggle kernels status zephyrpong/<slug>
 
 ### git 状态
 
-**核心代码、文档、实验记录已在 2026-09-19 提交到本地仓库**（提交 `a8789d8` 代码、`4442f0d` 文档），**没有 push**。
+**核心代码、文档和实验记录持续提交到本地仓库**（最新提交以 `git log -1 --oneline` 为准），**没有 push**。
 远程是 `origin = https://github.com/khalilpong/hyperspectral-object-detection-2026.git`。
 **push 之前先确认这个 GitHub 仓库是私有的**：文档里有比赛方法和成绩细节，比赛期间不宜公开。改完东西记得再 `git status` 看一眼，别让新文件漏提交。
 
@@ -97,6 +99,7 @@ kaggle kernels status zephyrpong/<slug>
 | Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full/ablation 均完成并下载；ablation `0.69668` 低于旧基准 `0.70143`，该方向已否决 |
 | Notebook `hsi-yolo26m-prgb-{ablation,full}`、`prgb368-full`、`prgb0715-full` | 伪RGB（5/8/13、3/6/8、0/7/15）的训练，产物同上 |
 | `hsi-yolo26m-stem-ablation` | 私有 Kernel 版本 1 `COMPLETE`；SpectralStem fixed 2400/600，epoch 30 最佳/最终 `0.69930`，门禁失败；不跑全量、不提交 |
+| `hsi-yolo26m-ablation` | 私有 Kernel 版本 2 `COMPLETE`；普通 HSI16 YOLO26m fixed 2400/600 延长到 45 轮，最佳/最终 `0.69899`，门禁失败；不跑 full-data e45、不提交 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 
@@ -184,6 +187,8 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | 全分辨率灰度图（pan） | 落后 0.07~0.19 | 抹掉了光谱；真鸡蛋/塑料鸡蛋/木鸡蛋形状相同，只能靠光谱区分 |
 | pan + 光谱 17 通道融合 | −0.0089 | 前期打平，后期精修阶段 pan 通道成了干扰 |
 | SpectralStem 16→3 可学习投影 | `0.69930`，比旧同规格 `0.70143` 低 `0.00213` | mAP50 提升 `0.00392`，但 mAP50-95 下降；没有改善高 IoU 定位，`stone_block` 等类别退化 |
+| Horizontal-flip-only TTA | 七尺度+flip 最佳 `0.70587796`，只比同 evaluator supported-full 高 `+0.00016978` | cache control 通过，但低于 `+0.001` 推理门禁；不生成、不提交候选 |
+| YOLO26m 延长到 45 轮 | `0.69899`，比 e30 `0.70143` 低 `0.00244` | epochs 31–45 无一轮超过 e30；mAP50 上升但严格 IoU 总指标下降，不跑全量 |
 | 伪标签（给测试图自动打标签再训练） | Kaggle **−0.0094** | 丢了低分框长尾的召回；伪框继承了教师模型的定位误差 |
 | yolo26m（本机） | Kaggle 0.60553 | **被 8GB 显存逼到 batch=2**，不是模型不行 |
 | P2 小目标检测头 / box loss 权重 10 | 更差 | — |

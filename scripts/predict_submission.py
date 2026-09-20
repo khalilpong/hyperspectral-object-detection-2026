@@ -171,6 +171,88 @@ def _prediction_arrays(
         )
 
 
+def _horizontal_flip_xyxy(boxes: np.ndarray, width: int) -> np.ndarray:
+    """Map XYXY boxes between an image and its horizontal mirror.
+
+    Ultralytics returns boxes in the original array's continuous pixel-boundary
+    coordinates, so the inverse transform is ``x1 = width - x2`` and
+    ``x2 = width - x1``.  Using ``width - 1`` here would introduce a one-pixel
+    shift.
+    """
+    boxes = np.asarray(boxes, dtype=np.float32)
+    if boxes.ndim != 2 or boxes.shape[1:] != (4,):
+        raise ValueError(f"Expected boxes with shape N x 4, got {boxes.shape}")
+    if width <= 0:
+        raise ValueError("Image width must be positive")
+    flipped = boxes.copy()
+    flipped[:, 0] = width - boxes[:, 2]
+    flipped[:, 2] = width - boxes[:, 0]
+    return flipped
+
+
+def _collect_horizontal_flip_predictions(
+    model: YOLO,
+    image_paths: Sequence[Path],
+    *,
+    channels: int,
+    batch_size: int,
+    predict_kwargs: dict[str, object],
+) -> dict[Path, PredictionArrays]:
+    """Predict horizontally mirrored NPY inputs and map boxes back to source coordinates."""
+    predictions: dict[Path, PredictionArrays] = {}
+    flip_kwargs = {**predict_kwargs, "augment": False}
+    for path_batch in _batches(image_paths, batch_size):
+        source_shapes: list[tuple[int, int]] = []
+        flipped_arrays: list[np.ndarray] = []
+        for path in path_batch:
+            array = np.load(path, allow_pickle=False)
+            if array.ndim != 3 or array.shape[2] != channels:
+                raise ValueError(
+                    f"Expected H x W x {channels} input at {path.resolve()}, got {array.shape}"
+                )
+            if array.dtype != np.uint8:
+                raise ValueError(f"Expected uint8 input at {path.resolve()}, got {array.dtype}")
+            source_shapes.append(tuple(map(int, array.shape[:2])))
+            # Slicing creates a negative-stride view, which model.predict cannot
+            # safely convert to a tensor.  Materialize a contiguous HWC array.
+            flipped_arrays.append(np.ascontiguousarray(array[:, ::-1, :]))
+
+        results = model.predict(source=flipped_arrays, stream=False, **flip_kwargs)
+        if len(results) != len(path_batch):
+            raise RuntimeError(
+                f"Expected {len(path_batch)} horizontal-flip results, received {len(results)}"
+            )
+        for path, source_shape, result in zip(path_batch, source_shapes, results, strict=True):
+            result_shape = tuple(map(int, result.orig_shape))
+            if result_shape != source_shape:
+                raise RuntimeError(
+                    f"Horizontal-flip result shape {result_shape} does not match "
+                    f"source shape {source_shape} for {path}"
+                )
+            if result.boxes is None:
+                boxes = np.empty((0, 4), dtype=np.float32)
+                classes = np.empty(0, dtype=np.float32)
+                confidences = np.empty(0, dtype=np.float32)
+            else:
+                boxes = result.boxes.xyxy.detach().cpu().numpy()
+                classes = result.boxes.cls.detach().cpu().numpy()
+                confidences = result.boxes.conf.detach().cpu().numpy()
+            if path in predictions:
+                raise RuntimeError(f"Duplicate horizontal-flip prediction for {path}")
+            predictions[path] = PredictionArrays(
+                path=path,
+                boxes=_horizontal_flip_xyxy(boxes, source_shape[1]),
+                classes=classes,
+                confidences=confidences,
+                orig_shape=source_shape,
+            )
+    if len(predictions) != len(image_paths):
+        raise RuntimeError(
+            f"Horizontal-flip pass returned {len(predictions)} of {len(image_paths)} images"
+        )
+    return predictions
+
+
 def _iou_one_to_many(box: np.ndarray, boxes: np.ndarray) -> np.ndarray:
     top_left = np.maximum(box[:2], boxes[:, :2])
     bottom_right = np.minimum(box[2:], boxes[:, 2:])
@@ -499,26 +581,32 @@ def _fused_full_and_tiled_predictions(
         )
 
 
-def _fused_multiscale_predictions(
-    predictions_by_scale: dict[int, dict[Path, PredictionArrays]],
+def _fused_prediction_sources(
+    prediction_sources: Sequence[dict[Path, PredictionArrays]],
     image_paths: Sequence[Path],
     *,
     fusion_iou: float,
     max_det: int,
     support_gain: float = 0.0,
 ) -> Iterator[PredictionArrays]:
-    scales = tuple(predictions_by_scale)
-    if len(scales) < 2:
-        raise ValueError("At least two prediction scales are required for fusion")
+    """Fuse two or more transformed views produced by one checkpoint."""
+    if len(prediction_sources) < 2:
+        raise ValueError("At least two prediction sources are required for fusion")
     for path in image_paths:
-        records = [predictions_by_scale[scale][path] for scale in scales]
+        try:
+            records = [source[path] for source in prediction_sources]
+        except KeyError as error:
+            raise RuntimeError(f"Prediction source is missing {path}") from error
         if len({record.orig_shape for record in records}) != 1:
-            raise RuntimeError(f"Inconsistent original shapes across scales for {path}")
+            raise RuntimeError(f"Inconsistent original shapes across prediction sources for {path}")
         boxes = np.concatenate([record.boxes for record in records], axis=0)
         classes = np.concatenate([record.classes for record in records], axis=0)
         confidences = np.concatenate([record.confidences for record in records], axis=0)
         source_ids = np.concatenate(
-            [np.full(len(record.boxes), index, dtype=np.int64) for index, record in enumerate(records)]
+            [
+                np.full(len(record.boxes), source_index, dtype=np.int64)
+                for source_index, record in enumerate(records)
+            ]
         )
         fused_boxes, fused_classes, fused_confidences = _box_vote(
             boxes,
@@ -537,6 +625,26 @@ def _fused_multiscale_predictions(
             confidences=fused_confidences,
             orig_shape=records[0].orig_shape,
         )
+
+
+def _fused_multiscale_predictions(
+    predictions_by_scale: dict[int, dict[Path, PredictionArrays]],
+    image_paths: Sequence[Path],
+    *,
+    fusion_iou: float,
+    max_det: int,
+    support_gain: float = 0.0,
+) -> Iterator[PredictionArrays]:
+    scales = tuple(predictions_by_scale)
+    if len(scales) < 2:
+        raise ValueError("At least two prediction scales are required for fusion")
+    yield from _fused_prediction_sources(
+        [predictions_by_scale[scale] for scale in scales],
+        image_paths,
+        fusion_iou=fusion_iou,
+        max_det=max_det,
+        support_gain=support_gain,
+    )
 
 
 def main() -> None:

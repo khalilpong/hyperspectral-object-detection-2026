@@ -1,4 +1,4 @@
-"""远程训练流水线：YOLO26 + HSI16（16 波段，共享 P0.5-P99.5 缩放）。
+"""远程训练流水线：YOLO26 + HSI16（16 波段，共享百分位缩放）。
 
 同一个脚本既能在 Kaggle Notebook 上跑，也能在任意 Linux GPU 云服务器上跑。
 
@@ -17,7 +17,15 @@
   HSI_RUN_NAME     本次运行名（决定输出子目录和提交文件名）
   HSI_ATTEMPTS     batch/workers 降级序列，如 "8:2,6:2,4:2,4:0"
   HSI_MULTISCALE   1 = 7 尺度融合推理（出正式提交用），0 = 单尺度（快速验证用）
+  HSI_SEED         训练随机种子
+  HSI_EXTRA_CHANNEL_INIT  random | zero；16 通道输入首层新增 13 通道的初始化方式
+  HSI_SPECTRAL_STEM  1 = 可学习的 16→3 光谱投影后接完整预训练 YOLO，0 = 原始首层扩展
+  HSI_LOWER_PERCENTILE  HSI16 共享缩放下百分位，默认 0.5
+  HSI_UPPER_PERCENTILE  HSI16 共享缩放上百分位，默认 99.5
+  HSI_OBJECT_CROPS  1 = 训练集增加一份 128x256 对象感知 crop，0 = 不增加
+  HSI_TILE_INFERENCE  1 = 同一 checkpoint 的全图多尺度 + 切片推理，0 = 仅原推理
   HSI_CODE_ROOT    代码目录（含 scripts.*.py 平铺文件），不设则在输入目录里自动查找
+  HSI_VARIANT_CODE_ROOT  crop/tile 增量代码目录；不设则按 prepare_object_crops 文件自动查找
   HSI_COMP_ROOT    比赛原始数据目录（含 class.txt），不设则自动查找
   HSI_INPUT_ROOT   自动查找的起点，默认 /kaggle/input
   HSI_WORK_ROOT    临时工作目录（放 ~9GB 的 16 波段数据），默认取 /kaggle/temp 与 /tmp 中空间大的
@@ -55,24 +63,40 @@ from pathlib import Path
 # 由 make_kernel.py 生成 Kaggle Notebook 时替换这一块；云服务器上用环境变量覆盖。
 CONFIG = {
     "MODE": "ablation",
-    "MODEL": "yolo26l.pt",
-    "EPOCHS": 30,
-    "RUN_NAME": "kaggle_ablation_yolo26l_e30",
-    "ATTEMPTS": "8:2:0+1,4:2:0,4:0:0",
+    "MODEL": "yolo26m.pt",
+    "EPOCHS": 45,
+    "RUN_NAME": "kaggle_ablation_yolo26m_e45",
+    "ATTEMPTS": "8:2,6:2,4:2,4:0",
     "MULTISCALE": 0,
+    "DATA": "hsi16",
+    "SEED": 2026,
+    "EXTRA_CHANNEL_INIT": "random",
+    "SPECTRAL_STEM": 0,
+    "LOWER_PERCENTILE": 0.5,
+    "UPPER_PERCENTILE": 99.5,
+    "OBJECT_CROPS": 0,
+    "TILE_INFERENCE": 0,
 }
 # =====================================================================
 
 IMGSZ = 1024
-SEED = 2026
 ULTRALYTICS_VERSION = "8.4.147"
 MULTISCALE_SIZES = ["832", "896", "960", "1024", "1088", "1152", "1216"]
 
 
 def _cfg(key: str):
     value = os.environ.get(f"HSI_{key}", CONFIG[key])
-    if key in ("EPOCHS", "MULTISCALE"):
+    if key in (
+        "EPOCHS",
+        "MULTISCALE",
+        "SEED",
+        "SPECTRAL_STEM",
+        "OBJECT_CROPS",
+        "TILE_INFERENCE",
+    ):
         return int(value)
+    if key in ("LOWER_PERCENTILE", "UPPER_PERCENTILE"):
+        return float(value)
     return value
 
 
@@ -80,6 +104,37 @@ MODE = _cfg("MODE")
 MODEL = _cfg("MODEL")
 EPOCHS = _cfg("EPOCHS")
 RUN_NAME = _cfg("RUN_NAME")
+SEED = _cfg("SEED")
+EXTRA_CHANNEL_INIT = _cfg("EXTRA_CHANNEL_INIT")
+SPECTRAL_STEM = bool(_cfg("SPECTRAL_STEM"))
+LOWER_PERCENTILE = _cfg("LOWER_PERCENTILE")
+UPPER_PERCENTILE = _cfg("UPPER_PERCENTILE")
+OBJECT_CROPS = bool(_cfg("OBJECT_CROPS"))
+TILE_INFERENCE = bool(_cfg("TILE_INFERENCE"))
+if not 0 <= LOWER_PERCENTILE < UPPER_PERCENTILE <= 100:
+    raise SystemExit(
+        "HSI 百分位必须满足 0 <= LOWER_PERCENTILE < UPPER_PERCENTILE <= 100，"
+        f"收到 {LOWER_PERCENTILE:g}/{UPPER_PERCENTILE:g}"
+    )
+if EXTRA_CHANNEL_INIT not in ("random", "zero"):
+    raise SystemExit(
+        "HSI_EXTRA_CHANNEL_INIT 必须是 random 或 zero，"
+        f"收到 {EXTRA_CHANNEL_INIT!r}"
+    )
+if SPECTRAL_STEM and EXTRA_CHANNEL_INIT != "random":
+    raise SystemExit(
+        "HSI_SPECTRAL_STEM 与 HSI_EXTRA_CHANNEL_INIT=zero 互斥；"
+        "SpectralStem 自己负责 16→3 identity 初始化"
+    )
+
+
+def _percentile_tag(value: float) -> str:
+    scaled = round(value * 10)
+    if abs(value * 10 - scaled) < 1e-9:
+        return f"{scaled:03d}"
+    return f"{value:g}".replace(".", "p")
+
+
 def _parse_attempts(text: str):
     """"batch:workers[:devices]"，devices 用 + 连接，例如 "8:2:0+1" = 两张卡 DDP，总 batch 8（每卡 4）。"""
     attempts = []
@@ -91,6 +146,23 @@ def _parse_attempts(text: str):
 
 ATTEMPTS = _parse_attempts(_cfg("ATTEMPTS"))
 MULTISCALE = bool(_cfg("MULTISCALE"))
+DATA = _cfg("DATA")   # "hsi16" = 16 波段 NPY（默认）；"pseudo_rgb" 或 "pseudo_rgb:3,6,8" = 三通道伪RGB PNG
+BANDS = ["5", "8", "13"]
+if DATA.startswith("pseudo_rgb"):
+    if ":" in DATA:
+        BANDS = DATA.split(":", 1)[1].split(",")
+        if len(BANDS) != 3:
+            raise SystemExit(f"伪RGB 需要正好 3 个波段，收到 {BANDS}")
+    DATA = "pseudo_rgb"
+elif DATA != "hsi16":
+    raise SystemExit(f"未知 DATA={DATA}，只支持 hsi16 / pseudo_rgb[:波段,波段,波段]")
+if DATA != "hsi16" and EXTRA_CHANNEL_INIT != "random":
+    raise SystemExit("--extra-channel-init zero 只适用于 16 通道 HSI 输入")
+if DATA != "hsi16" and SPECTRAL_STEM:
+    raise SystemExit("SpectralStem 目前只支持 16 通道 HSI 输入")
+if DATA != "hsi16" and (OBJECT_CROPS or TILE_INFERENCE):
+    raise SystemExit("对象 crop 与切片推理目前只支持 16 通道 HSI 输入")
+IMAGE_EXT = "npy" if DATA == "hsi16" else "png"
 ON_KAGGLE = Path("/kaggle/working").exists()
 
 OUT = Path(os.environ.get("HSI_OUT_DIR") or ("/kaggle/working" if ON_KAGGLE else f"hsi_outputs/{RUN_NAME}")).resolve()
@@ -98,7 +170,12 @@ INPUT_ROOT = Path(os.environ.get("HSI_INPUT_ROOT", "/kaggle/input"))
 
 STATUS = {
     "config": {"MODE": MODE, "MODEL": MODEL, "EPOCHS": EPOCHS, "RUN_NAME": RUN_NAME,
-               "ATTEMPTS": ATTEMPTS, "MULTISCALE": MULTISCALE, "IMGSZ": IMGSZ, "SEED": SEED},
+               "ATTEMPTS": ATTEMPTS, "MULTISCALE": MULTISCALE, "DATA": DATA, "BANDS": BANDS,
+               "EXTRA_CHANNEL_INIT": EXTRA_CHANNEL_INIT,
+               "SPECTRAL_STEM": SPECTRAL_STEM,
+               "LOWER_PERCENTILE": LOWER_PERCENTILE, "UPPER_PERCENTILE": UPPER_PERCENTILE,
+               "OBJECT_CROPS": OBJECT_CROPS, "TILE_INFERENCE": TILE_INFERENCE,
+               "IMGSZ": IMGSZ, "SEED": SEED},
     "host": {"on_kaggle": ON_KAGGLE, "node": platform.node(), "python": sys.version.split()[0]},
     "steps": {},
     "started": time.time(),
@@ -261,32 +338,114 @@ def _main() -> None:
     project = work_root / "project"
     (project / "src" / "hsi_detection").mkdir(parents=True, exist_ok=True)
     (project / "scripts").mkdir(parents=True, exist_ok=True)
-    for f in code_root.glob("hsi_detection.*.py"):
-        shutil.copy2(f, project / "src" / "hsi_detection" / f.name.removeprefix("hsi_detection."))
-    for f in code_root.glob("scripts.*.py"):
-        shutil.copy2(f, project / "scripts" / f.name.removeprefix("scripts."))
+    code_roots = [code_root]
+    variant_code_root = None
+    if OBJECT_CROPS or TILE_INFERENCE:
+        variant_code_root = (
+            Path(os.environ["HSI_VARIANT_CODE_ROOT"])
+            if os.environ.get("HSI_VARIANT_CODE_ROOT")
+            else find_one(INPUT_ROOT, "scripts.prepare_object_crops.py").parent
+        ).resolve()
+        code_roots.append(variant_code_root)
+    for source_root in code_roots:
+        for f in source_root.glob("hsi_detection.*.py"):
+            shutil.copy2(f, project / "src" / "hsi_detection" / f.name.removeprefix("hsi_detection."))
+        for f in source_root.glob("scripts.*.py"):
+            shutil.copy2(f, project / "scripts" / f.name.removeprefix("scripts."))
     manifest_dir = project / "data" / "processed" / "pseudo_rgb"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(code_root / "split_manifest.csv", manifest_dir / "split_manifest.csv")
     env = dict(os.environ, PYTHONPATH=str(project / "src"))
-    step("code_restored", code_root=str(code_root), comp_root=str(comp_root))
+    step(
+        "code_restored",
+        code_root=str(code_root),
+        variant_code_root=str(variant_code_root) if variant_code_root else None,
+        comp_root=str(comp_root),
+    )
 
-    # ---------- 4. 生成 16 波段数据（已存在则跳过，方便云服务器上反复跑） ----------
-    data_dir = project / "data" / "processed" / "hsi16_shared_p005_995"
-    code, tail = run(
-        [sys.executable, "scripts/prepare_multispectral.py", "--raw-root", str(comp_root),
-         "--output", str(data_dir), "--workers", str(os.cpu_count() or 4),
-         "--lower-percentile", "0.5", "--upper-percentile", "99.5"],
-        OUT / "prepare.log", project, env)
+    # ---------- 4. 生成训练数据（16 波段 NPY 或 伪RGB PNG） ----------
+    if DATA == "hsi16":
+        percentile_dir = (
+            f"hsi16_shared_p{_percentile_tag(LOWER_PERCENTILE)}_"
+            f"{_percentile_tag(UPPER_PERCENTILE)}"
+        )
+        data_dir = project / "data" / "processed" / percentile_dir
+        prepare_cmd = [sys.executable, "scripts/prepare_multispectral.py", "--raw-root", str(comp_root),
+                       "--output", str(data_dir), "--workers", str(os.cpu_count() or 4),
+                       "--lower-percentile", f"{LOWER_PERCENTILE:g}",
+                       "--upper-percentile", f"{UPPER_PERCENTILE:g}"]
+    else:
+        # 输出目录不能和上面放 split_manifest.csv 的 pseudo_rgb 目录重名
+        data_dir = project / "data" / "processed" / ("pseudo_rgb_b" + "-".join(BANDS))
+        prepare_cmd = [sys.executable, "scripts/prepare_pseudo_rgb.py", "--raw-root", str(comp_root),
+                       "--output", str(data_dir), "--workers", str(os.cpu_count() or 4), "--bands", *BANDS]
+    code, tail = run(prepare_cmd, OUT / "prepare.log", project, env)
     if code != 0:
         raise RuntimeError("数据准备失败\n" + tail)
-    counts = {s: len(list((data_dir / "images" / s).glob("*.npy"))) for s in ("train", "val", "test")}
+    counts = {s: len(list((data_dir / "images" / s).glob(f"*.{IMAGE_EXT}"))) for s in ("train", "val", "test")}
     step("data_prepared", counts=counts, work_free_gb=round(shutil.disk_usage(work_root).free / 2**30, 1))
     if counts != {"train": 2400, "val": 600, "test": 1000}:
         raise RuntimeError(f"数据数量不符合预期 2400/600/1000：{counts}")
+    if DATA == "pseudo_rgb":
+        # 伪RGB 的划分是现场按种子重新生成的，必须和 16 波段用的 split_manifest.csv 完全一致，否则留出集分数没法比
+        def _split(path):
+            with open(path, newline="", encoding="utf-8") as handle:
+                return {row["image_id"]: row["split"] for row in csv.DictReader(handle)}
+        if _split(data_dir / "split_manifest.csv") != _split(code_root / "split_manifest.csv"):
+            raise RuntimeError("伪RGB 数据的训练/验证划分和 split_manifest.csv 不一致")
+        # prepare_pseudo_rgb.py 只写留出用的 dataset.yaml，全量训练的 dataset_all.yaml 在这里补上（train = train + val）
+        import yaml
+        cfg = yaml.safe_load((data_dir / "dataset.yaml").read_text(encoding="utf-8"))
+        cfg["train"] = ["images/train", "images/val"]
+        cfg["training_scope"] = "all_3000_labeled_images"
+        (data_dir / "dataset_all.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True),
+                                                   encoding="utf-8")
+
+    if OBJECT_CROPS:
+        crop_splits = ["train", "val"] if MODE == "full" else ["train"]
+        crop_cmd = [
+            sys.executable,
+            "scripts/prepare_object_crops.py",
+            "--dataset-root",
+            str(data_dir),
+            "--splits",
+            *crop_splits,
+            "--tile-height",
+            "128",
+            "--tile-width",
+            "256",
+            "--crops-per-image",
+            "1",
+            "--jitter-fraction",
+            "0.15",
+            "--minimum-visible",
+            "0.9",
+            "--seed",
+            str(SEED),
+        ]
+        code, tail = run(crop_cmd, OUT / "prepare_object_crops.log", project, env)
+        if code != 0:
+            raise RuntimeError("对象 crop 数据准备失败\n" + tail)
+        crop_report = json.loads((data_dir / "object_crop_report.json").read_text(encoding="utf-8"))
+        expected_sources = 3000 if MODE == "full" else 2400
+        if crop_report["generated_crops"] < int(expected_sources * 0.95):
+            raise RuntimeError(
+                f"对象 crop 数量过少：{crop_report['generated_crops']} / {expected_sources}"
+            )
+        step(
+            "object_crops_prepared",
+            generated=crop_report["generated_crops"],
+            skipped=len(crop_report["skipped_images"]),
+            splits=crop_splits,
+        )
 
     # ---------- 5. 训练（自动降级） ----------
-    data_yaml = data_dir / ("dataset_all.yaml" if MODE == "full" else "dataset.yaml")
+    if OBJECT_CROPS:
+        data_yaml = data_dir / (
+            "dataset_all_object_crops.yaml" if MODE == "full" else "dataset_object_crops.yaml"
+        )
+    else:
+        data_yaml = data_dir / ("dataset_all.yaml" if MODE == "full" else "dataset.yaml")
     weights = code_root / MODEL
     if not weights.exists():
         weights = Path(MODEL)   # 代码包里没有的官方权重（如 yolo26l.pt）交给 Ultralytics 联网自动下载
@@ -297,6 +456,10 @@ def _main() -> None:
         cmd = [sys.executable, "scripts/train_baseline.py", "--model", str(weights), "--data", str(data_yaml),
                "--epochs", str(EPOCHS), "--imgsz", str(IMGSZ), "--batch", str(batch), "--device", device,
                "--workers", str(workers), "--seed", str(SEED), "--name", RUN_NAME]
+        if SPECTRAL_STEM:
+            cmd.append("--spectral-stem")
+        else:
+            cmd += ["--extra-channel-init", EXTRA_CHANNEL_INIT]
         if MODE == "full":
             cmd.append("--no-val")   # 全量训练时验证集已在训练集里，逐轮验证无意义
         t0 = time.time()
@@ -324,16 +487,28 @@ def _main() -> None:
         shutil.copy2(last, keep / "last.pt")
         if (run_dir / "weights" / "best.pt").exists():
             shutil.copy2(run_dir / "weights" / "best.pt", keep / "best.pt")
-    step("trained", batch=used[0], workers=used[1], device=used[2])
+    step(
+        "trained",
+        batch=used[0],
+        workers=used[1],
+        device=used[2],
+        spectral_stem=SPECTRAL_STEM,
+    )
 
     # ---------- 6. 推理 + 校验 ----------
     submission = OUT / f"submission_{RUN_NAME}.csv"
     cmd = [sys.executable, "scripts/predict_submission.py", "--weights", str(last),
            "--images", str(data_dir / "images" / "test"), "--output", str(submission),
-           "--input-format", "npy", "--batch", "1", "--device", "0", "--half",
+           "--input-format", IMAGE_EXT, "--batch", "1", "--device", "0", "--half",
            "--conf", "0.0001", "--iou", "0.70", "--max-det", "300", "--imgsz", str(IMGSZ)]
     if MULTISCALE:
         cmd += ["--multi-scale", *MULTISCALE_SIZES, "--fusion-iou", "0.70"]
+    if TILE_INFERENCE:
+        cmd += [
+            "--tile-size", "128", "256",
+            "--tile-stride", "96", "192",
+            "--tile-imgsz", str(IMGSZ),
+        ]
     t0 = time.time()
     code, tail = run(cmd, OUT / "predict.log", project, env)
     if code != 0:
@@ -343,7 +518,13 @@ def _main() -> None:
     code, tail = run([sys.executable, "scripts/check_submission.py", str(submission),
                       "--images", str(data_dir / "images" / "test")],
                      OUT / "check.log", project, env)
-    step("predicted", sec=round(time.time() - t0), multiscale=MULTISCALE, check=tail.strip()[-200:])
+    step(
+        "predicted",
+        sec=round(time.time() - t0),
+        multiscale=MULTISCALE,
+        tiled=TILE_INFERENCE,
+        check=tail.strip()[-200:],
+    )
     if code != 0:
         raise RuntimeError("提交文件校验失败\n" + tail)
 

@@ -1,6 +1,6 @@
 {
-  "id": "zephyrpong/hsi-yolo26l-ablation",
-  "title": "hsi-yolo26l-ablation",
+  "id": "zephyrpong/hsi-yolo26m-ablation",
+  "title": "hsi-yolo26m-ablation",
   "code_file": "run_hsi_yolo26.py",
   "language": "python",
   "kernel_type": "script",
