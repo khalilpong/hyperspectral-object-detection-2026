@@ -68,6 +68,8 @@
 
 本机真实数据结果：2400 张 train 原图生成 `2376` 个 crop；24 张源图在清洗后没有可用框而跳过。Ultralytics 扫描 `4776/4776` 个 full+crop 样本，报告 `0 background / 0 corrupt`，并实际加载出 `(16, 1024, 1024)` crop tensor。
 
+训练链路也做了真实反向传播 smoke，而不只停留在数据扫描：YOLO26m 构造出的首层为 `16→64`，预训练权重转移 `768/768`。先用 full+crop YAML 的 `fraction=0.01` 跑通 48 个样本、1 epoch；由于列表顺序使这 48 个样本都来自 full 目录，又补做了 crop-only smoke。后者明确扫描 `labels/train_object_crops` 的 24 个 crop，完成 12 个 batch、1 epoch，退出码为 0，`box/cls/l1` loss 均为有限值。两次 smoke 使用 `imgsz=256`、只用于证明读取和反向传播契约，不是性能实验；其验证 mAP 没有决策意义。
+
 ## 已实现的同 checkpoint 切片推理
 
 - tile：原图坐标 `128×256`；
