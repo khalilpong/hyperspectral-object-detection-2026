@@ -1,25 +1,25 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-19 22:00（北京时间）
+> 最后更新：2026-09-20 11:25（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
 
-**Kaggle 最佳 0.64831，排名 21 / 243（09-19），榜首 0.67943。** 距离比赛截止（北京时间 9 月 25 日 00:00）还有 5 天。
+**Kaggle 最佳 0.65091，排名第 19（09-20 即时），榜首 0.67943。** 距离比赛截止（北京时间 9 月 25 日 00:00）还有不到 5 天。
 
 - 单个模型早已榨干（0.6265）。现在的分数全靠**八个模型 × 7 个尺度的投票融合**：
-  0.62953（单 m）→ 0.63917（2 个）→ 0.64376（3 个）→ 0.64744（4 个）→ 0.64766（6 个）→ **0.64831（8 个）**。
+  0.62953（单 m）→ 0.63917（2 个）→ 0.64376（3 个）→ 0.64744（4 个）→ 0.64766（6 个）→ 0.64831（8 个旧排序）→ **0.65091（支持票排序）**。
 - **融合已经进入饱和区**：四个模型以后每加一个成员，分数变化都在 ±0.001 内，和噪声差不多，继续堆成员回报很低。
 - 训练全部在 **Kaggle 免费 GPU** 上跑（脚本已打通，不需要租服务器）。
 - 所有成员在测试集上的预测都缓存好了，**调融合权重、换融合算法不需要 GPU，约 10 分钟一个**（见下"下一步"）。
-- 2026-09-19 新增“多来源支持票轻量加成”：`gain=0.125` 在 2/3/4 模型留出组合均优于旧算法，八模型候选已生成并校验；详见 `experiments/ensemble-support-gain-20260919.md`。当天 Kaggle 3 次额度已用完，页面显示约 18 小时后重置，尚未提交新候选。
-- 2026-09-19 的 P1–P99 新成员已完整训练并收取：YOLO26m、HSI16、全量 3000、batch 8、30 epoch，远端 `result=success`，不会自动提交。第九成员 `W_I=0.2/0.4` 两个候选均已生成并校验；它们相对首选 support 候选分别改变约 12.6%/14.1% 的精确框，不能视为低风险微调。私有留出 Notebook `zephyrpong/hsi-yolo26m-p010-990-ablation` 正在运行，用于决定明天是否把 P1 候选排入提交顺序。详见 `experiments/training-hsi16-p010-990-20260919.md`。
+- 2026-09-20 已验证“多来源支持票轻量加成”：`gain=0.125` 在 2/3/4 模型留出组合均为正，Public 也从 `0.64831` 升至 **`0.65091`**（提交 `56378610`，+`0.00260`）。详见 `experiments/ensemble-support-gain-20260919.md`。
+- P1–P99 第九成员已否决：固定 2400/600 的 YOLO26m 消融为 `0.69668`，低于同规格旧基准 `0.70143`（-`0.00475`）。`W_I=0.2/0.4` 两个候选均不提交；详见 `experiments/training-hsi16-p010-990-20260919.md`。
 
 ## 👉 接手后第一件事
 
-**当前最佳 0.64831 = 八个模型 × 7 个尺度投票融合**，做法见下面"最佳提交是怎么做出来的"，
-**一条命令复现：`bash scripts/build_ensemble_submission.sh submissions/xxx.csv`**（约 10 分钟，不用 GPU）。
+**当前最佳 0.65091 = 八个模型 × 7 个尺度投票融合 + `support_gain=0.125`**，做法见下面"最佳提交是怎么做出来的"，
+**一条命令复现：`SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/xxx.csv`**（约 10 分钟，不用 GPU）。
 
 ### 融合实验的完整记录（提交分数才是唯一真相）
 
@@ -34,16 +34,16 @@
 | 六模型 + 伪RGB-m（batch3/60轮，×1.0） | 0.63772 ❌ 掉 0.0099 |
 | 六模型 + 波段 3/6/8 | 0.64630 ❌ 掉 0.0014 |
 | 六模型 + 波段 3/6/8 + batch3/60轮（×0.4） | 0.64712 ❌ 掉 0.0005 |
-| **六模型 + 波段 3/6/8 + 波段 0/7/15（八模型）** | **0.64831（当前最佳）** |
+| 六模型 + 波段 3/6/8 + 波段 0/7/15（八模型，旧排序） | 0.64831 |
+| **同八模型 + support gain 0.125** | **0.65091（当前最佳）** |
 
 **融合已经进入饱和区**：四模型以后每次加成员的变化都在 ±0.001 内（+0.0002、+0.0007、−0.0014、−0.0005），
 和提交本身的噪声差不多。**再堆成员的回报很低**，剩下的提分空间更可能在别处（见下）。
 
 ### 下一步可以试的（按优先级）
 
-1. **额度重置后先验证支持票候选**：`submissions/submission_ens8_b368_b0715_ms7_f070_sg0125.csv`，SHA-256 `A4158EF7...0C410`。它只改变最终置信度排序，留出集跨 2/3/4 模型稳定为正；上传和最终 Submit 前需用户当时确认。
-   第二顺位候选是 `submissions/submission_ens8_b075_d070_sg0125_ms7_f070.csv`（SHA-256 `4FFE084D...6E28`）：在支持票基础上把 B/D 权重调为 0.75/0.7，留出 0.71180，但会改变约 8.15 万个框，风险高于纯支持票；详见 `experiments/ensemble-weight-sweep-supportgain-20260919.md`。
-2. **等待 P1–P99 留出验证后再决定第九成员**：全量模型、独立 cache 和 `W_I=0.2/0.4` 候选都已完成。先查询 `kaggle kernels status zephyrpong/hsi-yolo26m-p010-990-ablation` 并下载验证结果；若相对旧 P0.5–P99.5 的同规格 m 模型没有明确正增益，不提交 P1 候选。候选文件与哈希见 `experiments/training-hsi16-p010-990-20260919.md`。
+1. **下一次优先验证 B/D 权重候选**：`submissions/submission_ens8_b075_d070_sg0125_ms7_f070.csv`（SHA-256 `4FFE084D...6E28`）。它保留已获 Public 增益的 `support_gain=0.125`，把 B/D 权重调为 0.75/0.7；固定留出 `0.71180`，高于旧权重同 gain 的 `0.71089`。它会改变约 8.15 万个框，风险高于第一份；提交前仍需用户当时确认。详见 `experiments/ensemble-weight-sweep-supportgain-20260919.md`。
+2. **不要提交 P1–P99 第九成员**：固定划分已证实 `0.69668 < 0.70143`。全量权重与 cache 仅保留复查，不让 `W_I=0.2/0.4` 候选占额度。
 3. **调成员权重**（零 GPU，每个约 10 分钟）：`W_G=0.5 bash scripts/build_ensemble_submission.sh submissions/try.csv`，
    每个成员的系数都可以用环境变量 `W_B`~`W_H` 覆盖，`FUSION_IOU` 也可以调。现在的系数（1.0/0.6/0.8/0.6/0.5/0.5/0.8/0.8）是拍脑袋定的。
    一次改一个系数，出文件，提交，看分数。当前已备好 G `0.8→0.4` 单变量文件，见上述实验记录。
@@ -105,7 +105,7 @@ kaggle kernels status zephyrpong/<slug>
 | 私有数据集 `zephyrpong/hsi-detection-code` | 代码（平铺）+ 划分清单 + yolo26m/s 预训练权重 + 主脚本 |
 | 私有数据集 `zephyrpong/hsi-competition-raw` | 原始比赛 zip（比赛数据无法直接挂载进 Notebook，见 Kaggle 文档第 5 条坑） |
 | Notebook `hsi-yolo26m-{smoke,ablation,full}`、`hsi-yolo26l-ablation` | 16 波段 m / l 的各次训练，产物在 `kaggle_remote/outputs/` 对应目录 |
-| Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full 已完成并下载，ablation 于 09-19 21:36 后运行，用来做固定划分比较 |
+| Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full/ablation 均完成并下载；ablation `0.69668` 低于旧基准 `0.70143`，该方向已否决 |
 | Notebook `hsi-yolo26m-prgb-{ablation,full}`、`prgb368-full`、`prgb0715-full` | 伪RGB（5/8/13、3/6/8、0/7/15）的训练，产物同上 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
@@ -117,14 +117,14 @@ kaggle kernels status zephyrpong/<slug>
 | 比赛 | [Hyperspectral Object Detection Challenge 2026](https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026) |
 | 任务 | 高光谱图像目标检测，18 类，评分指标 mAP@[0.5:0.95] |
 | 截止 | **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）** |
-| 最佳成绩 | **0.64831**（八模型融合，提交编号 56346325，2026-09-19） |
-| 排名 | **21 / 243**（09-19 快照；榜首 0.67943；09-17 是 38 / 216，别人也在涨） |
+| 最佳成绩 | **0.65091**（八模型融合 + support gain 0.125，提交编号 56378610，2026-09-20） |
+| 排名 | **第 19**（09-20 即时；榜首 0.67943；09-19 是第 21，别人也在涨） |
 | 提交额度 | **每天 3 次**（09-18 实测：第 4 次报 400 Bad Request），**UTC 零点重置（北京时间 08:00）**；Kaggle 保留历史最佳，提交差的不会掉排名 |
 | Kaggle 账号 | `zephyrpong` |
 
 > Kaggle 命令行显示的时间都是 UTC。Kaggle **保留历史最佳成绩**，提交一个更差的结果不会降低排名。
 
-## 最佳提交是怎么做出来的（Kaggle 0.64831，09-19）
+## 最佳提交是怎么做出来的（Kaggle 0.65091，09-20）
 
 **八个模型 × 7 个尺度 = 56 路预测投票融合**（脚本 `scripts/eval_ensemble.py`，一键封装 `scripts/build_ensemble_submission.sh`）：
 
@@ -139,20 +139,20 @@ kaggle kernels status zephyrpong/<slug>
 | G | YOLO26m | 伪RGB **波段 3/6/8** | Kaggle T4，batch 8，30 轮，全部 3000 张 | `kaggle_remote/outputs/prgb368-full/kaggle_full_yolo26m_prgb368_e30/last.pt`（图片 `data/processed/pseudo_rgb_b3-6-8`） | 0.8 |
 | H | YOLO26m | 伪RGB **波段 0/7/15** | Kaggle T4，batch 8，30 轮，全部 3000 张 | `kaggle_remote/outputs/prgb0715-full/kaggle_full_yolo26m_prgb0715_e30/last.pt`（图片 `data/processed/pseudo_rgb_b0-7-15`） | 0.8 |
 
-> 只用 A~D 四个成员是 0.64744，A~F 六个是 0.64766，A~H 八个是 0.64831（G 单独加反而掉到 0.64630，G+H 一起加才涨，说明这一步的涨幅在噪声里）。
+> 只用 A~D 四个成员是 0.64744，A~F 六个是 0.64766，A~H 八个用旧排序是 0.64831；相同 A~H、只加入 `support_gain=0.125` 后为 0.65091。
 > 想省时间就用 A~D。
 
 推理：每个成员各跑 7 个尺度（832~1216），NMS iou 0.70，conf 0.0001，max_det 300；
-所有结果按置信度加权投票融合（fusion IoU 0.70）。
+所有结果按置信度加权投票融合（fusion IoU 0.70），融合排序使用 `support_gain=0.125`。
 
 复现（Git Bash，项目根目录）：
 
 ```bash
-bash scripts/build_ensemble_submission.sh submissions/repro.csv
+SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.csv
 ```
 
-有缓存时只做融合，约 10 分钟；缓存被删了要重新跑 GPU 推理，8GB 显卡约 1 小时。已验证会逐字节复现提交过的最佳文件
-`submissions/submission_ens8_b368_b0715_ms7_f070.csv`（这个文件本身也一直留着，可以直接再提交）。
+有缓存时只做融合，约 10 分钟；缓存被删了要重新跑 GPU 推理，8GB 显卡约 1 小时。上述命令会复现提交过的最佳文件
+`submissions/submission_ens8_b368_b0715_ms7_f070_sg0125.csv`（SHA-256 `A4158EF7...0C410`）。
 
 > ⚠️ `eval_ensemble.py` 按 `--model` 的**标签**缓存每个尺度的预测到 `artifacts/ensemble_cache/<标签>.pkl`。
 > **换了权重或图片目录就必须换标签**（或删掉对应 pkl），否则会读到旧缓存。
