@@ -70,7 +70,7 @@
 
 训练链路也做了真实反向传播 smoke，而不只停留在数据扫描：YOLO26m 构造出的首层为 `16→64`，预训练权重转移 `768/768`。先用 full+crop YAML 的 `fraction=0.01` 跑通 48 个样本、1 epoch；由于列表顺序使这 48 个样本都来自 full 目录，又补做了 crop-only smoke。后者明确扫描 `labels/train_object_crops` 的 24 个 crop，完成 12 个 batch、1 epoch，退出码为 0，`box/cls/l1` loss 均为有限值。两次 smoke 使用 `imgsz=256`、只用于证明读取和反向传播契约，不是性能实验；其验证 mAP 没有决策意义。
 
-远端固定划分 Kernel 已在本地生成，但尚未上传或启动。为避免给现有私有代码数据集重传权重和 split manifest，Kernel 改为复用原数据集，再叠加一个最小私有增量数据集。增量 payload 只有 `hsi_detection.tiling.py`、`scripts.prepare_object_crops.py`、`scripts.predict_submission.py` 三个源码文件，共 `52,032` bytes；不含原始比赛数据、crop 数据、模型权重、split manifest、submission 或凭证，且已生成逐文件 SHA-256 manifest。创建该私有数据集和推送私有 Kernel 都属于外部写操作，必须先取得用户明确授权。
+用户明确授权后，最小增量数据集已作为私有 `zephyrpong/hsi-object-crop-code` 创建，状态 `ready`、版本 1；远端四个数据文件（3 个源码文件和 SHA-256 manifest）的名称与大小均已逐项核对。它共含 `52,032` bytes 源码，不含原始比赛数据、crop 数据、模型权重、split manifest、submission 或凭证。私有 fixed-split Kernel `zephyrpong/hsi-yolo26m-crop-ablation` 随后推送版本 1，当前为 `RUNNING`。Kernel 复用原私有代码/权重与原始数据集，再叠加该增量代码；没有竞赛提交步骤。
 
 ## 已实现的同 checkpoint 切片推理
 
