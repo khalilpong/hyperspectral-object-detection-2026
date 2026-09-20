@@ -70,3 +70,38 @@ def test_make_kernel_renders_isolated_p1_p99_variant(tmp_path: Path, monkeypatch
     assert '"SEED": 2026' in rendered
     assert metadata["id"] == "zephyrpong/hsi-yolo26m-p010-990-full"
     assert metadata["is_private"] is True
+
+
+def test_make_kernel_renders_isolated_zero_channel_init_variant(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--extra-channel-init",
+            "zero",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_xczero"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_xczero_e30"' in rendered
+    assert '"EXTRA_CHANNEL_INIT": "zero"' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-xczero-ablation"
+    assert metadata["is_private"] is True

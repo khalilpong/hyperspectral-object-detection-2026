@@ -19,28 +19,29 @@
 2. 读 `experiments/experiments.csv`（所有实验的结果，包括失败的）。
 3. 需要跑 Kaggle 训练时读 `docs/KAGGLE_REMOTE_TRAINING.md`（尤其"踩过的坑"9 条）。
 
-读完后先用 5 句话向我复述：当前分数、排名、已经试过什么、你打算先做什么、需要我做什么。**等我确认再开始花 Kaggle GPU 额度或提交。**
+读完后先用 5 句话向我复述：合规 Public 基线、排行榜显示但不合规的历史分数、正在运行的实验、你打算先做什么、需要我做什么。**等我确认再开始花新的 Kaggle GPU 额度或提交。**
 
 ### 当前状态（以 HANDOFF.md 为准，这里是摘要）
 
-- Kaggle 账号 `zephyrpong`。**当前最佳 0.64831，排名 21/243**，榜首 0.67943。截止 **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）**。
-- 最佳做法：**8 个模型 × 7 个尺度的框投票融合**（4 种输入数据：16 波段，以及伪RGB 的波段 5/8/13、3/6/8、0/7/15）。
-  一条命令复现：`bash scripts/build_ensemble_submission.sh submissions/xxx.csv`（有缓存，约 10 分钟，不用 GPU）。
-- 单个模型已经榨干（0.6265）。融合在第 4 个成员之后进入饱和区：再加成员每次只有 ±0.001，和噪声一样。
+- Kaggle 账号 `zephyrpong`。排行榜显示最高 `0.65091` 来自八模型融合，**违反官方单模型规则，只能视为历史不合规记录**。当前已验证合规的 Public 最佳是单 YOLO26m checkpoint 七尺度 `0.62953`。截止 **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）**。
+- 官方允许同一训练模型的 TTA / multi-scale inference，禁止不同训练模型的 voting、weighted fusion 和 post-NMS fusion。任何 `submission_ens*.csv` 都不得再上传或选为最终提交。
+- 合规候选 `submissions/submission_single_m_hsi16_ms7_f070_sg0125.csv` 已生成：同一 YOLO26m checkpoint 七尺度，留出 `0.70404 -> 0.70544`，94,094 detections，SHA-256 `E4ED7BBC...3D266`，尚未上传。
+- 私有固定划分 Kernel `zephyrpong/hsi-yolo26m-xczero-ablation` 已在运行；只测试额外 13 个输入通道 `random -> zero`，门槛 `0.70443`，不自动提交。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
 - Kaggle GPU：免费账号每周约 30 小时，本周已用约 20 小时。训一个 yolo26m 全量模型约 2.5 小时。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. **调融合成员的权重**（零 GPU）：用 `W_B`~`W_H` 环境变量一次只改一个系数出文件，我来确认后再提交。
-2. **换融合算法**（零 GPU）：现在是按置信度加权的框投票（`scripts/predict_submission.py` 的 `_box_vote`）。可试 WBF、多数票加成等。
-3. **再训一个强的 16 波段成员**（约 2.6 小时 Kaggle GPU）：换归一化方式或随机种子。
-4. 你有更好的想法也可以提，但要说明依据。
+1. 查询并下载 `hsi-yolo26m-xczero-ablation`；严格比较旧固定划分 `0.70143`，只有达到 `0.70443` 才生成全量 zero-init 单模型。
+2. 对现成合规候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
+3. zero-init 不达标时，再考虑同规格新 seed 的固定划分消融，不能直接训练全量。
+4. 后续高潜方向优先对象感知 crop/tiling 或学习式光谱投影；每次只改一个变量并保持单一训练模型。
 
 **很重要的方法论（这是这个项目用分数换来的）**：
-- 融合类改动，**600 张留出验证集完全不可信**（判断错了四次，有两次方向都反了）。融合的组合只能靠**提交验证**。
-- 单模型类改动，仍然先用留出集验证，增益 ≥ +0.003 才值得全量重训。
+- 比赛提交始终只用一个训练 checkpoint；同一 checkpoint 的多尺度/TTA可以融合，不同 checkpoint 的输出不能合并。
+- 单模型训练改动先用固定 600 张留出集验证，增益 ≥ +0.003 才值得全量重训。
+- 同 checkpoint 推理排序可以用小幅正向留出证据筛选，但要记录 top-300 替换数，不能承诺 Public 必涨。
 - 一次只改一个变量，否则分数变化没法归因。
 - **每个实验都登记进 `experiments/experiments.csv`，包括失败的**；重要结论同步更新 `HANDOFF.md`。
 - 看真实提交分数，不要相信"看起来更好"的中间指标。
@@ -59,9 +60,8 @@
    没有把 `exports/`、`data/`、`runs/`、`*.pt`、`submission*.csv`、`kaggle_remote/outputs|code_dataset|raw_dataset` 加进去，它们已在 .gitignore，不要强加）。
    **`git push` 必须先问我**（我还没确认远程 GitHub 仓库是私有的）。
 7. **花提交额度和 Kaggle GPU 额度前先经我同意**（提交是不可撤回的；GPU 每周额度有限）。最后一天不要留到最后才试。
-8. **比赛规则**：使用任何外部数据或非预训练权重前，先让我确认比赛规则允许。目前只用了官方数据和 Ultralytics 的 yolo26 预训练权重。
-9. 主脚本 `kaggle_remote/run_hsi_yolo26.py` 改动后，必须同步到 `kaggle_remote/code_dataset/` 并 `kaggle datasets version`，
-   否则 Kaggle 上跑的还是旧版（踩过的坑 7）。
+8. **比赛规则**：最终提交必须只有一个训练模型；同模型多尺度/TTA允许，多模型 voting/weighted fusion/post-NMS fusion 禁止。使用任何外部数据或非公开预训练权重前，先让我确认。目前只用了官方数据和 Ultralytics 的公开 yolo26 预训练权重。
+9. 改动 Kaggle 会从 `hsi-detection-code` 数据集恢复的 `scripts.*.py` / `hsi_detection.*.py` 后，必须同步 `kaggle_remote/code_dataset/` 并创建新的私有 dataset version；只改直接随 Notebook 上传的 `run_hsi_yolo26.py` 时，重新生成并推送 Kernel 即可。
 10. 本机 PowerShell 5.1 不支持 `&&`，命令一律用 **Git Bash**；Windows 上 Kaggle 命令带 `/` 的相对路径会出错，**先 `cd` 进目录再用 `-p .`**。
 
 ### 汇报方式

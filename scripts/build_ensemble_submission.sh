@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# 生成八成员融合提交文件（Kaggle 0.64831 的配方）。在项目根目录用 Git Bash 运行：
+# ⚠️ 仅供历史离线复盘：本比赛当前规则禁止多个不同训练模型的 voting / weighted fusion。
+# 不得把本脚本生成的文件上传为比赛提交。下面保留的是 Kaggle 0.64831 的历史配方。
+# 在项目根目录用 Git Bash 运行：
 #
 #   bash scripts/build_ensemble_submission.sh submissions/my_try.csv
 #

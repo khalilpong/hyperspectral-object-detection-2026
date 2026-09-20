@@ -1,4 +1,4 @@
-"""Held-out evaluation of multi-model x multi-scale box-vote ensembles.
+"""Held-out evaluation of single-model or multi-model multi-scale box voting.
 
 Each (checkpoint, scale) pass is cached under --cache so fusion variants can be
 re-evaluated without re-running the GPU. Every pass is one voting source, so an
@@ -191,7 +191,25 @@ def main() -> None:
             )
             results.append({"config": f"{tag} f{fusion_iou:g}", **record})
             print(f"{results[-1]['config']:<32} mAP50-95 {record['map50_95']:.5f}", flush=True)
-        if len(models) < 2:
+        if len(models) == 1:
+            tag, passes = models[0]
+            single_sources = [(passes[scale], 1.0) for scale in passes]
+            for support_gain in args.support_gains:
+                if support_gain == 0.0:
+                    continue
+                record = _evaluate_predictions(
+                    _fused(
+                        single_sources,
+                        image_paths,
+                        fusion_iou,
+                        args.max_det,
+                        support_gain,
+                    ),
+                    names,
+                )
+                label = f"{tag} f{fusion_iou:g} sg{support_gain:g}"
+                results.append({"config": label, **record})
+                print(f"{label:<32} mAP50-95 {record['map50_95']:.5f}", flush=True)
             continue
         for support_gain in args.support_gains:
             for weight in args.second_weights:
