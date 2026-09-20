@@ -9,7 +9,7 @@
 1. zero-init 固定划分已完成并否决：最佳 `0.69690 < 0.70443`；
 2. object-crop 固定划分已完成并否决：`0.69772 < 0.70443`；当前 checkpoint 的重叠切片推理也已否决；
 3. 同 checkpoint `fusion_iou=0.74` 已提交，Public `0.63072`，只比 `f0.70` 高 `0.00006`；停止继续细扫后处理；
-4. 下一训练变量优先 `SpectralStem 16→3→YOLO26m`：以 5/8/13 identity 初始化，再学习全 16 波段的线性组合；先做本地构造/权重迁移/反向传播 smoke，再经用户授权运行 fixed split；
+4. `SpectralStem 16→3→YOLO26m` 的本地构造、权重迁移、optimizer 更新、checkpoint 新进程/受限安全加载、16 通道预测 smoke 已通过；下一动作是经用户授权运行 fixed split；
 5. 新 seed 的同规格 YOLO26m 只作为方差对照，不替代 SpectralStem；任何全量训练和 Kaggle Submit 仍需单独确认。
 
 ## 合规边界（事实）
@@ -119,14 +119,14 @@
 | zero-init fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69690`，否决 | 记录负结果，不跑全量 |
 | object-crop fixed split | 标准 600 full-val mAP50-95 `>=0.70443` | `0.69772`，否决 | 停止该训练路线 |
 | tile TTA | 相对同 checkpoint、同 evaluator 的 full baseline `>=+0.003`，且 cache control 通过 | `-0.00807`，否决 | 不用于全量/提交 |
-| SpectralStem fixed split | 标准 full-val mAP50-95 `>=0.70443` | 尚未运行 | 未达标则不跑全量 |
+| SpectralStem fixed split | 标准 full-val mAP50-95 `>=0.70443` | 本地门禁通过；远端尚未启动 | 未达标则不跑全量 |
 | full training | status success、权重和日志完整、单 checkpoint | 无新候选 | 不生成正式候选 |
 | final CSV | 1000/1000 图、0 非法框、独立校验通过 | f0.74 已通过并提交 | 不上传 |
 | Kaggle Submit | 用户在动作时明确确认，且实时额度已复核 | ref `56392305` 已完成 | 不提交 |
 
 ## 备选路线及优先级
 
-1. `SpectralStem 16→3→YOLO26m`：identity 初始化到当前 5/8/13 三通道，再学习全 16 波段线性组合。zero-init 与 object-crop 均未过门禁后，这是当前证据最支持的结构性变量；需要先完成自定义模块/YAML/权重重载 smoke。
+1. `SpectralStem 16→3→YOLO26m`：identity 初始化到当前 5/8/13 三通道，再学习全 16 波段线性组合。本地门禁与私有 Kernel staging 已完成，详见 [spectral-stem-20260920.md](spectral-stem-20260920.md)；需取得授权后运行 fixed split。
 2. 新 seed 的同规格 YOLO26m：只用于估计固定划分方差，仍按 `>=0.70443` 门禁；它没有正向先验，不应抢占 SpectralStem 主线。
 3. 温和 `cls_pw=0.25/0.5`：Ultralytics 8.4.147 原生支持，工程风险小，但只影响分类 BCE，未直接解决定位主因。
 4. 同 YOLO family 蒸馏：最终部署学生模型，可能有收益，但 teacher forward 增加显存与时间，且需要先重新核对当前版本的官方支持边界。[Ultralytics knowledge distillation guide](https://docs.ultralytics.com/guides/knowledge-distillation)

@@ -57,6 +57,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--spectral-stem",
+        action="store_true",
+        help=(
+            "Train a single checkpoint with a learnable 1x1 HSI-to-RGB projection initialized "
+            "from physical bands 5/8/13. Resume and prediction recover the stem from the checkpoint."
+        ),
+    )
+    parser.add_argument(
         "--val",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -69,6 +77,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Enable or disable training and validation plots (use --no-plots to disable).",
     )
     args = parser.parse_args(argv)
+
+    if args.spectral_stem and args.extra_channel_init is not None:
+        parser.error("--spectral-stem and --extra-channel-init are mutually exclusive")
+    if args.resume and args.spectral_stem:
+        parser.error("--resume recovers SpectralStem from the checkpoint; do not pass --spectral-stem")
 
     if args.resume:
         unsupported = [
@@ -217,7 +230,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         model.load(str(args.load_weights.resolve()))
     if args.extra_channel_init == "zero":
         model.add_callback("on_pretrain_routine_end", zero_extra_input_channel_weights)
-    model.train(**build_train_kwargs(args))
+    from hsi_detection.spectral_stem import SpectralDetectionTrainer, has_spectral_stem
+
+    use_spectral_trainer = args.spectral_stem or has_spectral_stem(model.model)
+    train_kwargs = build_train_kwargs(args)
+    if use_spectral_trainer:
+        model.train(trainer=SpectralDetectionTrainer, **train_kwargs)
+    else:
+        model.train(**train_kwargs)
 
 
 if __name__ == "__main__":

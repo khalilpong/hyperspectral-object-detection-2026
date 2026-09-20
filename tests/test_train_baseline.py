@@ -141,6 +141,23 @@ def test_resume_rejects_extra_channel_initialization() -> None:
         )
 
 
+def test_spectral_stem_rejects_extra_channel_initialization() -> None:
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            ["--spectral-stem", "--extra-channel-init", "zero"]
+        )
+
+
+def test_resume_recovers_spectral_stem_without_architecture_flag() -> None:
+    args = train_baseline.parse_args(["--resume", "runs/example/weights/last.pt"])
+    assert args.spectral_stem is False
+
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            ["--resume", "runs/example/weights/last.pt", "--spectral-stem"]
+        )
+
+
 def test_resume_rejects_architecture_weight_transfer() -> None:
     with pytest.raises(SystemExit):
         train_baseline.parse_args(

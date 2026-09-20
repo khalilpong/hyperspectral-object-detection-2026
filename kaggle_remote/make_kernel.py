@@ -13,6 +13,8 @@
         --lower-percentile 1 --upper-percentile 99
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --extra-channel-init zero
+    python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
+        --spectral-stem
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -60,6 +62,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=2026, help="训练随机种子")
     parser.add_argument("--extra-channel-init", choices=("random", "zero"), default="random",
                         help="16 通道输入首层新增通道的初始化；zero 会保留预训练 RGB 初始函数")
+    parser.add_argument("--spectral-stem", action="store_true",
+                        help="使用 identity 初始化的可学习 16→3 光谱投影，再进入完整预训练 YOLO")
     parser.add_argument("--lower-percentile", type=float, default=0.5,
                         help="HSI16 共享缩放下百分位")
     parser.add_argument("--upper-percentile", type=float, default=99.5,
@@ -79,6 +83,10 @@ def main() -> None:
         parser.error(str(error))
     if (args.object_crops or args.tile_inference) and args.data != "hsi16":
         parser.error("--object-crops/--tile-inference 目前只支持 --data hsi16")
+    if args.spectral_stem and args.data != "hsi16":
+        parser.error("--spectral-stem 目前只支持 --data hsi16")
+    if args.spectral_stem and args.extra_channel_init != "random":
+        parser.error("--spectral-stem 与 --extra-channel-init zero 互斥")
 
     model_tag = args.model.removesuffix(".pt")
     if args.data == "hsi16":
@@ -97,9 +105,10 @@ def main() -> None:
     else:
         raise SystemExit(f"未知 --data {args.data}")
     init_tag = "" if args.extra_channel_init == "random" else f"_xc{args.extra_channel_init}"
+    stem_tag = "_stem" if args.spectral_stem else ""
     crop_tag = "_crop" if args.object_crops else ""
     tile_tag = "_tile" if args.tile_inference else ""
-    variant_tag = data_tag + init_tag + crop_tag + tile_tag
+    variant_tag = data_tag + init_tag + stem_tag + crop_tag + tile_tag
     run_name = args.run_name or f"kaggle_{args.mode}_{model_tag}{variant_tag}_e{args.epochs}"
     slug = f"hsi-{model_tag}{variant_tag}-{args.mode}".replace("_", "-")
 
@@ -115,6 +124,7 @@ def main() -> None:
         f'    "DATA": "{args.data}",\n'
         f'    "SEED": {args.seed},\n'
         f'    "EXTRA_CHANNEL_INIT": "{args.extra_channel_init}",\n'
+        f'    "SPECTRAL_STEM": {1 if args.spectral_stem else 0},\n'
         f'    "LOWER_PERCENTILE": {args.lower_percentile!r},\n'
         f'    "UPPER_PERCENTILE": {args.upper_percentile!r},\n'
         f'    "OBJECT_CROPS": {1 if args.object_crops else 0},\n'
@@ -157,6 +167,7 @@ def main() -> None:
     print(f"  配置     : mode={args.mode} model={args.model} epochs={args.epochs} "
           f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
           f"seed={args.seed} extra_channel_init={args.extra_channel_init} "
+          f"spectral_stem={args.spectral_stem} "
           f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "
           f"object_crops={args.object_crops} tile_inference={args.tile_inference}")
     print(f"推送：cd {folder.name} && kaggle kernels push -p .")

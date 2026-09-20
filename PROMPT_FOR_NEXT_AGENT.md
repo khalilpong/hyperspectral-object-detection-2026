@@ -27,15 +27,16 @@
 - 官方允许同一训练模型的 TTA / multi-scale inference，禁止不同训练模型的 voting、weighted fusion 和 post-NMS fusion。任何 `submission_ens*.csv` 都不得再上传或选为最终提交。
 - 当前合规最佳 `submissions/submission_single_m_hsi16_ms7_f074_sg0125.csv` 已成功提交：同一 YOLO26m checkpoint 七尺度，`fusion_iou=0.74`、`support_gain=0.125`，Public `0.63072`；ref `56392305`，98,556 detections，SHA-256 `E6F5BC18...2CB48E`。它只比前一版 `f0.70` 的 `0.63066` 高 `+0.00006`，说明当前 checkpoint 后处理已接近饱和。
 - zero-init fixed split 最佳 `0.69690`，object-crop fixed split `0.69772`；两者均低于旧同规格 `0.70143` 和门槛 `0.70443`，已否决，不跑全量、不提交。
+- SpectralStem 本地门禁已通过：5/8/13 物理波段正确映射为数组索引 `(0,1,2)`，projection 在真实 trainer 中被 optimizer 更新，标准模块 checkpoint 可在新进程与受限安全模式恢复，16 通道 NPY 推理和完整 pytest 通过。私有 code dataset / Kernel 只在本地 staged，尚未上传或运行。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
 - Kaggle GPU：免费账号每周约 30 小时，本周已用约 20 小时。训一个 yolo26m 全量模型约 2.5 小时。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. 下一主线是 `SpectralStem`：一个 checkpoint 内用可学习光谱投影处理 16 通道，再进入 YOLO26m。先做本地构造、预训练迁移、反向传播、checkpoint 新进程恢复和 16 通道预测 smoke。
-2. 当前 HSI16 NPY 的物理波段顺序是 `5,8,13,0,1,...`，所以 5/8/13 identity 初始化应接数组通道索引 `(0,1,2)`；把 `(5,8,13)` 当数组索引会静默接错。
-3. smoke 全通过后，先报告准确配置、预计 GPU 时长和门禁，再经我确认运行 2400/600 fixed split；只有 `>=0.70443` 才训练全量。
+1. 下一主线是 `SpectralStem` fixed split；本地 smoke 已完成，先报告预计约 2 小时 GPU、固定配置和 `0.70443` 门禁，并取得用户明确授权后才更新私有 code dataset 与 push Kernel。
+2. 当前 HSI16 NPY 的物理波段顺序是 `5,8,13,0,1,...`，所以 5/8/13 identity 初始化接数组通道索引 `(0,1,2)`；实现与 checkpoint metadata 都必须保持此映射。
+3. 运行 2400/600 后，只有标准 full-val `mAP50-95 >=0.70443` 才申请全量；未达标就记录并停止。
 4. 同规格新 seed 只作为方差对照，排在 SpectralStem 后。继续扫 fusion/NMS、zero-init、object-crop、旧 checkpoint tile TTA 均不再投入。
 5. 对任何新候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
 
