@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-20 20:36（北京时间）
+> 最后更新：2026-09-20 23:03（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -14,13 +14,13 @@
 - zero-init 私有消融已完成并否决：最佳 `0.69690`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交。
 - object-crop 私有消融已完成并否决：标准 full-val `0.69772`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交，也不扩展 tile。
 - P1–P99 已否决：固定划分 `0.69668 < 0.70143`；不要重复训练或提交其第九成员候选。
-- SpectralStem 本地门禁已通过；私有 `hsi-detection-code` 版本 8 已 `ready`，私有 Kernel `zephyrpong/hsi-yolo26m-stem-ablation` 版本 1 于 2026-09-20 20:35（北京时间）进入 `RUNNING`。这是 fixed 2400/600 消融，不是全量训练或竞赛提交。
+- SpectralStem 私有消融已完成并否决：标准 full-val 最佳与最终均为 epoch 30 的 `0.69930`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交。生成的测试 CSV 仅通过本地结构校验，未上传比赛。
 
 ## 👉 接手后第一件事
 
-1. 只读监控正在运行的私有 `zephyrpong/hsi-yolo26m-stem-ablation` 版本 1；不要重复 push、停止或重启。
-2. 完成后下载并核验 `status.json/results.csv/best.pt/last.pt`；fixed-split 门槛仍是旧 YOLO26m 基准 `0.70143 + 0.003 = 0.70443`。
-3. 新结构达标才申请全量 3000 张训练；未达标就停止。全量训练和任何 Submit 均需再次确认。
+1. SpectralStem 已完成并错过 `0.70443` 门槛，因此停止该路线；不要启动其全量 3000 张训练，也不要上传它生成的测试 CSV。
+2. 当前没有正在运行或已授权的新训练。若要继续，先向用户说明候选变量、固定划分门槛和 GPU 成本，再取得新的明确授权。
+3. 可讨论的低优先级对照是同规格 YOLO26m 新 seed；它只有估计方差的价值，没有正向增益证据。任何新训练和 Kaggle Submit 均需动作时确认。
 
 ### 成绩与合规状态
 
@@ -34,10 +34,10 @@
 
 ### 下一步可以试的（按优先级）
 
-1. `SpectralStem` fixed split 已启动；当前 HSI16 NPY 的物理波段 5/8/13 已排列为数组通道索引 0/1/2，identity 初始化接 `(0,1,2)`。
-2. 预计约 2 小时 Kaggle T4；运行中只监控，完成后核验产物；只在标准 full-val `mAP50-95 >= 0.70443` 时申请全量训练。
-3. 新 seed 的同规格 YOLO26m 只作为方差对照，没有正向先验；排在 SpectralStem 后。
-4. zero-init、object-crop、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
+1. `SpectralStem` fixed split 已完成：物理波段 5/8/13 正确映射到数组通道索引 `(0,1,2)`，但标准 full-val 仅 `0.69930 < 0.70443`，路线已停止。
+2. 新 seed 的同规格 YOLO26m 只可作为方差对照，没有正向先验；启动前仍需用户确认 GPU 成本。
+3. 温和 `cls_pw` 或显式 horizontal-flip-only 只能作为新的单变量 fixed-split/离线验证候选；现有证据不足，不能直接全量训练或提交。
+4. zero-init、object-crop、SpectralStem、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
 5. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
 > 提交额度每天 3 次，北京时间 08:00 重置。19:27 已用完当日最后一次，下一次提交须等重置后再实时复核。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
@@ -96,7 +96,7 @@ kaggle kernels status zephyrpong/<slug>
 | Notebook `hsi-yolo26m-{smoke,ablation,full}`、`hsi-yolo26l-ablation` | 16 波段 m / l 的各次训练，产物在 `kaggle_remote/outputs/` 对应目录 |
 | Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full/ablation 均完成并下载；ablation `0.69668` 低于旧基准 `0.70143`，该方向已否决 |
 | Notebook `hsi-yolo26m-prgb-{ablation,full}`、`prgb368-full`、`prgb0715-full` | 伪RGB（5/8/13、3/6/8、0/7/15）的训练，产物同上 |
-| `hsi-yolo26m-stem-ablation` | 私有 Kernel 版本 1 `RUNNING`；SpectralStem fixed 2400/600，30 epochs；不要重复启动 |
+| `hsi-yolo26m-stem-ablation` | 私有 Kernel 版本 1 `COMPLETE`；SpectralStem fixed 2400/600，epoch 30 最佳/最终 `0.69930`，门禁失败；不跑全量、不提交 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 
@@ -183,6 +183,7 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | NMS / fusion IoU / max_det 微调 | `f0.70→0.74` 留出 +0.00027、Public 仅 +0.00006；其他旧扫参有负结果 | 推理侧已接近榨干 |
 | 全分辨率灰度图（pan） | 落后 0.07~0.19 | 抹掉了光谱；真鸡蛋/塑料鸡蛋/木鸡蛋形状相同，只能靠光谱区分 |
 | pan + 光谱 17 通道融合 | −0.0089 | 前期打平，后期精修阶段 pan 通道成了干扰 |
+| SpectralStem 16→3 可学习投影 | `0.69930`，比旧同规格 `0.70143` 低 `0.00213` | mAP50 提升 `0.00392`，但 mAP50-95 下降；没有改善高 IoU 定位，`stone_block` 等类别退化 |
 | 伪标签（给测试图自动打标签再训练） | Kaggle **−0.0094** | 丢了低分框长尾的召回；伪框继承了教师模型的定位误差 |
 | yolo26m（本机） | Kaggle 0.60553 | **被 8GB 显存逼到 batch=2**，不是模型不行 |
 | P2 小目标检测头 / box loss 权重 10 | 更差 | — |

@@ -42,23 +42,40 @@
 
 第 6 项证明 projection 不只“有梯度”，还真实进入 trainer optimizer、被保存到 checkpoint。该小样本 mAP 为 0，只是链路 smoke，不是性能证据。临时 run、临时样本列表和子集 `train.cache/val.cache` 已精确清理。
 
-## Kaggle fixed-split 实验状态
+## Kaggle fixed-split 实验结果
 
 - 私有代码数据集 `zephyrpong/hsi-detection-code` 版本 8 已于 2026-09-20 创建并达到 `ready`；新增/更新：
   - `hsi_detection.spectral_stem.py`
   - `scripts.train_baseline.py`
   - `run_hsi_yolo26.py`
 - 私有 Kernel staging：`kaggle_remote/kernel_ablation_stem`
-- 私有 Notebook：`zephyrpong/hsi-yolo26m-stem-ablation`，版本 1，2026-09-20 20:35（北京时间）状态 `RUNNING`。
+- 私有 Notebook：`zephyrpong/hsi-yolo26m-stem-ablation`，版本 1；训练已正常完成，`status.json` 为 `result: success`。
 - 配置：YOLO26m、HSI16 P0.5-P99.5、固定 2400/600、30 epochs、`imgsz=1024`、seed 2026、首选 batch 8 / workers 2 / device 0。
 - 唯一实验变量：`SpectralStem 16->3`；不启用 object crop、tile inference、训练期 multiscale 或多模型融合。
-- 参考 zero-init fixed-split 的实测总时长 `7247 s`，预计约 2 小时 Kaggle T4；projection 的额外计算量很小。
+- 首次 batch 8 / workers 2 / device 0 即成功，训练 `7119 s`，总 Kernel `7547.2 s`；无 CUDA OOM 或 shared-memory 错误。
 
-上传前核验：本地载荷 18 个文件、64,840,426 bytes，移除了 13 个可重建 `.pyc`；三份关键源码与 staging SHA-256 一致，凭证扫描无命中。远端版本 8 的 `hsi_detection.spectral_stem.py`、`scripts.train_baseline.py`、`run_hsi_yolo26.py` 大小分别为 12,485 / 9,157 / 26,377 bytes，与本地一致。当前已消耗 Kaggle GPU 运行 fixed split；**没有启动全量训练，也没有新的竞赛 Submit。**
+上传前核验：本地载荷 18 个文件、64,840,426 bytes，移除了 13 个可重建 `.pyc`；三份关键源码与 staging SHA-256 一致，凭证扫描无命中。远端版本 8 的 `hsi_detection.spectral_stem.py`、`scripts.train_baseline.py`、`run_hsi_yolo26.py` 大小分别为 12,485 / 9,157 / 26,377 bytes，与本地一致。
+
+标准 full-val 的最佳与最终均为 epoch 30：
+
+| 指标 | SpectralStem | 旧同规格 YOLO26m | 差值 |
+|---|---:|---:|---:|
+| mAP50 | 0.95719 | 0.95327 | +0.00392 |
+| mAP50-95 | 0.69930 | 0.70143 | -0.00213 |
+| 相对全量门槛 0.70443 | -0.00513 | -0.00300 | -0.00213 |
+
+类别变化以 mAP50-95 计：`car +0.014`、`people +0.012`、`banana_plastic +0.007`，但 `stone_block -0.048`、`orange -0.015`、`car_toy -0.012`。mAP50 上升而 mAP50-95 下降，说明粗粒度检出略有改善，但高 IoU 定位没有改善；这是指标解释，不是因果证明。
+
+产物核验：
+
+- `status.json` 记录 train/val/test=`2400/600/1000`、train return code 0、`SPECTRAL_STEM=true`。
+- 测试 CSV 经本地 checker 验证为 44,367 detections / 1000 images；未上传 Kaggle，不能视作 Public 分数。
+- `best.pt` / `last.pt` 都为 44,119,956 bytes，SHA-256 分别为 `E629E810103CB703BB97EFA110FD6382425A9CAF8337E2A9CB38348281C269B0` / `7AC65DCAC5D1439E3C1667E0E10A8F00737670FABB79AF7243E3745A8D86970D`。
+- 两个 checkpoint 均恢复出 `channels=16`，band order、identity physical bands 与输入索引 metadata 一致；`best.pt` 还通过了禁止 `hsi_detection` import 的全新进程加载与 forward。
+- `status.json` SHA-256：`998AD19D934CA7DAB126770FEDF1DC18BDF4F6DF48DAB88A6E5E32775C0030F0`；`results.csv` SHA-256：`29F822EA1C4E4AFE38721D6A31DA1D98AAC7EAE365D3E0C3DC25FA87BC07C880`。
 
 ## 决策门禁
 
-- 先运行 fixed 2400/600；标准 full-val `mAP50-95 >= 0.70443` 才允许全量 3000 张训练。
-- 未达 `0.70443`：记录负结果并停止 SpectralStem，不生成正式提交候选。
-- 达标：下载并核对 `status.json`、`results.csv`、`best.pt/last.pt`、哈希和 checkpoint stem metadata；再单独请求全量训练授权。
-- 全量完成后仍需独立检查 1000/1000 测试图、0 非法框；最终 Kaggle Submit 必须再次取得动作时确认。
+- 门槛是标准 full-val `mAP50-95 >= 0.70443`；实测 `0.69930`，低 `0.00513`，门禁失败。
+- 决策：记录负结果并停止 SpectralStem；不启动全量 3000 张训练，不生成或上传正式提交候选。
+- 远端自动生成的测试 CSV 仅作为链路结构校验，不进入比赛提交清单。

@@ -19,7 +19,7 @@
 2. 读 `experiments/experiments.csv`（所有实验的结果，包括失败的）。
 3. 需要跑 Kaggle 训练时读 `docs/KAGGLE_REMOTE_TRAINING.md`（尤其"踩过的坑"9 条）。
 
-读完后先用 5 句话向我复述：合规 Public 基线、排行榜显示但不合规的历史分数、正在运行的实验、你打算先做什么、需要我做什么。**等我确认再开始花新的 Kaggle GPU 额度或提交。**
+读完后先用 5 句话向我复述：合规 Public 基线、排行榜显示但不合规的历史分数、最近完成的实验、你打算先做什么、需要我做什么。**等我确认再开始花新的 Kaggle GPU 额度或提交。**
 
 ### 当前状态（以 HANDOFF.md 为准，这里是摘要）
 
@@ -27,17 +27,17 @@
 - 官方允许同一训练模型的 TTA / multi-scale inference，禁止不同训练模型的 voting、weighted fusion 和 post-NMS fusion。任何 `submission_ens*.csv` 都不得再上传或选为最终提交。
 - 当前合规最佳 `submissions/submission_single_m_hsi16_ms7_f074_sg0125.csv` 已成功提交：同一 YOLO26m checkpoint 七尺度，`fusion_iou=0.74`、`support_gain=0.125`，Public `0.63072`；ref `56392305`，98,556 detections，SHA-256 `E6F5BC18...2CB48E`。它只比前一版 `f0.70` 的 `0.63066` 高 `+0.00006`，说明当前 checkpoint 后处理已接近饱和。
 - zero-init fixed split 最佳 `0.69690`，object-crop fixed split `0.69772`；两者均低于旧同规格 `0.70143` 和门槛 `0.70443`，已否决，不跑全量、不提交。
-- SpectralStem 本地门禁已通过：5/8/13 物理波段正确映射为数组索引 `(0,1,2)`，projection 在真实 trainer 中被 optimizer 更新，标准模块 checkpoint 可在新进程与受限安全模式恢复。私有 `hsi-detection-code` 版本 8 已 `ready`；私有 `hsi-yolo26m-stem-ablation` 版本 1 正在跑 fixed 2400/600，禁止重复 push、停止或重启。
+- SpectralStem 本地链路门禁已通过，私有 fixed 2400/600 消融也已正常完成，但标准 full-val 最佳/最终仅 `0.69930`，低于旧同规格 `0.70143` 和门槛 `0.70443`。该路线已否决：不跑全量、不上传其测试 CSV。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
 - Kaggle GPU：免费账号每周约 30 小时，本周已用约 20 小时。训一个 yolo26m 全量模型约 2.5 小时。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. 下一主线 `SpectralStem` fixed split 已在运行；只读监控，完成后下载并核验 `status.json/results.csv/best.pt/last.pt`，不要重复启动。
-2. 当前 HSI16 NPY 的物理波段顺序是 `5,8,13,0,1,...`，所以 5/8/13 identity 初始化接数组通道索引 `(0,1,2)`；实现与 checkpoint metadata 都必须保持此映射。
-3. 运行 2400/600 后，只有标准 full-val `mAP50-95 >=0.70443` 才申请全量；未达标就记录并停止。
-4. 同规格新 seed 只作为方差对照，排在 SpectralStem 后。继续扫 fusion/NMS、zero-init、object-crop、旧 checkpoint tile TTA 均不再投入。
+1. SpectralStem fixed split 已以 `0.69930 < 0.70443` 结束并否决；不要重复启动、跑全量或上传其测试 CSV。
+2. 当前 HSI16 NPY 的物理波段顺序是 `5,8,13,0,1,...`，所以 5/8/13 identity 初始化接数组通道索引 `(0,1,2)`；实现与 checkpoint metadata 已核验一致。
+3. 当前没有正在运行或已授权的新训练；同规格新 seed 只可作为方差对照，启动前先说明 GPU 成本并征得用户确认。
+4. 继续扫 fusion/NMS、zero-init、object-crop、SpectralStem、旧 checkpoint tile TTA 均不再投入。若提出 `cls_pw` 或 flip-only，仍须作为单变量验证，不得直接全量训练。
 5. 对任何新候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
 
 **很重要的方法论（这是这个项目用分数换来的）**：

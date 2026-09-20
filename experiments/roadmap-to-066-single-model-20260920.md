@@ -9,8 +9,8 @@
 1. zero-init 固定划分已完成并否决：最佳 `0.69690 < 0.70443`；
 2. object-crop 固定划分已完成并否决：`0.69772 < 0.70443`；当前 checkpoint 的重叠切片推理也已否决；
 3. 同 checkpoint `fusion_iou=0.74` 已提交，Public `0.63072`，只比 `f0.70` 高 `0.00006`；停止继续细扫后处理；
-4. `SpectralStem 16→3→YOLO26m` 的本地构造、权重迁移、optimizer 更新、checkpoint 新进程/受限安全加载、16 通道预测 smoke 已通过；下一动作是经用户授权运行 fixed split；
-5. 新 seed 的同规格 YOLO26m 只作为方差对照，不替代 SpectralStem；任何全量训练和 Kaggle Submit 仍需单独确认。
+4. `SpectralStem 16→3→YOLO26m` 的本地链路通过，但 fixed split 最佳/最终仅 `0.69930 < 0.70443`，已否决且不跑全量；
+5. 新 seed 的同规格 YOLO26m 只可作为方差对照；当前没有已授权的新训练，任何 GPU 运行和 Kaggle Submit 仍需单独确认。
 
 ## 合规边界（事实）
 
@@ -85,6 +85,14 @@
 - 最佳值比旧同规格 `0.70143` 低 `0.00453`，比全量门槛 `0.70443` 低 `0.00753`。
 - 结论：不训练全量 zero-init 模型，不提交其测试 CSV。
 
+### SpectralStem 结果：否决
+
+- 私有 fixed 2400/600 训练正常完成，return code 0，无 CUDA OOM 或 shared-memory 错误；最佳与最终均为 epoch 30 的 `mAP50-95=0.69930`。
+- 相对旧同规格 YOLO26m，mAP50 从 `0.95327` 提升到 `0.95719`（`+0.00392`），但 mAP50-95 从 `0.70143` 降到 `0.69930`（`-0.00213`）；相对全量门槛仍差 `0.00513`。
+- 类别层面 `car +0.014`、`people +0.012`，但 `stone_block -0.048`、`orange -0.015`、`car_toy -0.012`。这支持“粗召回略好、严格 IoU 定位未改善”的解释，不支持全量训练。
+- 生成的 1000 图测试 CSV 通过本地结构校验（44,367 detections），但这不是 Public 分数，也没有上传比赛。
+- `best.pt` SHA-256：`E629E810103CB703BB97EFA110FD6382425A9CAF8337E2A9CB38348281C269B0`；`last.pt` SHA-256：`7AC65DCAC5D1439E3C1667E0E10A8F00737670FABB79AF7243E3745A8D86970D`。两者均恢复出 `channels=16` 与一致的 stem metadata。
+
 ## 已实现的同 checkpoint 切片推理
 
 - tile：原图坐标 `128×256`；
@@ -119,18 +127,19 @@
 | zero-init fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69690`，否决 | 记录负结果，不跑全量 |
 | object-crop fixed split | 标准 600 full-val mAP50-95 `>=0.70443` | `0.69772`，否决 | 停止该训练路线 |
 | tile TTA | 相对同 checkpoint、同 evaluator 的 full baseline `>=+0.003`，且 cache control 通过 | `-0.00807`，否决 | 不用于全量/提交 |
-| SpectralStem fixed split | 标准 full-val mAP50-95 `>=0.70443` | 私有 Kernel v1 `RUNNING`；code dataset v8 `ready` | 未达标则不跑全量 |
+| SpectralStem fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69930`，否决 | 不跑全量、不提交测试 CSV |
 | full training | status success、权重和日志完整、单 checkpoint | 无新候选 | 不生成正式候选 |
 | final CSV | 1000/1000 图、0 非法框、独立校验通过 | f0.74 已通过并提交 | 不上传 |
 | Kaggle Submit | 用户在动作时明确确认，且实时额度已复核 | ref `56392305` 已完成 | 不提交 |
 
 ## 备选路线及优先级
 
-1. `SpectralStem 16→3→YOLO26m`：identity 初始化到当前 5/8/13 三通道，再学习全 16 波段线性组合。私有 fixed-split Kernel v1 已启动，详见 [spectral-stem-20260920.md](spectral-stem-20260920.md)；运行中只监控，完成后按门禁验收。
-2. 新 seed 的同规格 YOLO26m：只用于估计固定划分方差，仍按 `>=0.70443` 门禁；它没有正向先验，不应抢占 SpectralStem 主线。
+1. `SpectralStem 16→3→YOLO26m`：fixed split 已以 `0.69930` 否决，不再投入全量训练。
+2. 新 seed 的同规格 YOLO26m：只用于估计固定划分方差，仍按 `>=0.70443` 门禁；它没有正向先验，启动前必须重新取得 GPU 授权。
 3. 温和 `cls_pw=0.25/0.5`：Ultralytics 8.4.147 原生支持，工程风险小，但只影响分类 BCE，未直接解决定位主因。
-4. 同 YOLO family 蒸馏：最终部署学生模型，可能有收益，但 teacher forward 增加显存与时间，且需要先重新核对当前版本的官方支持边界。[Ultralytics knowledge distillation guide](https://docs.ultralytics.com/guides/knowledge-distillation)
-5. KD-DETR / RT-DETR：研究上有增益，但检测 query/feature 对齐和 16 通道迁移工作量高。KD-DETR 的贡献不是简单接入任意 teacher logits；RT-DETR 的 COCO 结果也不能外推到本数据。[KD-DETR, CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/html/Wang_KD-DETR_Knowledge_Distillation_for_Detection_Transformer_with_Consistent_Distillation_Points_CVPR_2024_paper.html)、[RT-DETR paper](https://arxiv.org/abs/2304.08069)、[official RT-DETR repository](https://github.com/lyuwenyu/RT-DETR)
+4. 显式 horizontal-flip-only：尚未独立测试，只能先在固定 600 张上做同 checkpoint 对照；内置 `augment=True` 已包含缩放+水平翻转且整体为负，不能把该方向当作已有正证据。
+5. 同 YOLO family 蒸馏：最终部署学生模型，可能有收益，但 teacher forward 增加显存与时间，且需要先重新核对当前版本的官方支持边界。[Ultralytics knowledge distillation guide](https://docs.ultralytics.com/guides/knowledge-distillation)
+6. KD-DETR / RT-DETR：研究上有增益，但检测 query/feature 对齐和 16 通道迁移工作量高。KD-DETR 的贡献不是简单接入任意 teacher logits；RT-DETR 的 COCO 结果也不能外推到本数据。[KD-DETR, CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/html/Wang_KD-DETR_Knowledge_Distillation_for_Detection_Transformer_with_Consistent_Distillation_Points_CVPR_2024_paper.html)、[RT-DETR paper](https://arxiv.org/abs/2304.08069)、[official RT-DETR repository](https://github.com/lyuwenyu/RT-DETR)
 
 ## 可复现命令
 
