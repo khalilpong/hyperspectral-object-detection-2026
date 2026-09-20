@@ -10,7 +10,8 @@
   "enable_internet": true,
   "dataset_sources": [
     "zephyrpong/hsi-detection-code",
-    "zephyrpong/hsi-competition-raw"
+    "zephyrpong/hsi-competition-raw",
+    "zephyrpong/hsi-object-crop-code"
   ],
   "competition_sources": [],
   "kernel_sources": [],

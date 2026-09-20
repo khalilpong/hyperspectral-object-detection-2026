@@ -24,6 +24,7 @@
   HSI_OBJECT_CROPS  1 = 训练集增加一份 128x256 对象感知 crop，0 = 不增加
   HSI_TILE_INFERENCE  1 = 同一 checkpoint 的全图多尺度 + 切片推理，0 = 仅原推理
   HSI_CODE_ROOT    代码目录（含 scripts.*.py 平铺文件），不设则在输入目录里自动查找
+  HSI_VARIANT_CODE_ROOT  crop/tile 增量代码目录；不设则按 prepare_object_crops 文件自动查找
   HSI_COMP_ROOT    比赛原始数据目录（含 class.txt），不设则自动查找
   HSI_INPUT_ROOT   自动查找的起点，默认 /kaggle/input
   HSI_WORK_ROOT    临时工作目录（放 ~9GB 的 16 波段数据），默认取 /kaggle/temp 与 /tmp 中空间大的
@@ -319,15 +320,30 @@ def _main() -> None:
     project = work_root / "project"
     (project / "src" / "hsi_detection").mkdir(parents=True, exist_ok=True)
     (project / "scripts").mkdir(parents=True, exist_ok=True)
-    for f in code_root.glob("hsi_detection.*.py"):
-        shutil.copy2(f, project / "src" / "hsi_detection" / f.name.removeprefix("hsi_detection."))
-    for f in code_root.glob("scripts.*.py"):
-        shutil.copy2(f, project / "scripts" / f.name.removeprefix("scripts."))
+    code_roots = [code_root]
+    variant_code_root = None
+    if OBJECT_CROPS or TILE_INFERENCE:
+        variant_code_root = (
+            Path(os.environ["HSI_VARIANT_CODE_ROOT"])
+            if os.environ.get("HSI_VARIANT_CODE_ROOT")
+            else find_one(INPUT_ROOT, "scripts.prepare_object_crops.py").parent
+        ).resolve()
+        code_roots.append(variant_code_root)
+    for source_root in code_roots:
+        for f in source_root.glob("hsi_detection.*.py"):
+            shutil.copy2(f, project / "src" / "hsi_detection" / f.name.removeprefix("hsi_detection."))
+        for f in source_root.glob("scripts.*.py"):
+            shutil.copy2(f, project / "scripts" / f.name.removeprefix("scripts."))
     manifest_dir = project / "data" / "processed" / "pseudo_rgb"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(code_root / "split_manifest.csv", manifest_dir / "split_manifest.csv")
     env = dict(os.environ, PYTHONPATH=str(project / "src"))
-    step("code_restored", code_root=str(code_root), comp_root=str(comp_root))
+    step(
+        "code_restored",
+        code_root=str(code_root),
+        variant_code_root=str(variant_code_root) if variant_code_root else None,
+        comp_root=str(comp_root),
+    )
 
     # ---------- 4. 生成训练数据（16 波段 NPY 或 伪RGB PNG） ----------
     if DATA == "hsi16":

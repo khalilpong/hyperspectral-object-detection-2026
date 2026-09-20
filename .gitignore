@@ -17,6 +17,7 @@ submission*.csv
 
 # Kaggle remote staging (contains weights)
 kaggle_remote/code_dataset/
+kaggle_remote/crop_code_dataset/
 kaggle_remote/outputs/
 kaggle_remote/raw_dataset/
 

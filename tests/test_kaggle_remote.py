@@ -10,11 +10,22 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).parents[1]
 MAKE_KERNEL = PROJECT_ROOT / "kaggle_remote" / "make_kernel.py"
+CROP_DATASET_BUILDER = PROJECT_ROOT / "kaggle_remote" / "make_crop_code_dataset.py"
 RUNNER = PROJECT_ROOT / "kaggle_remote" / "run_hsi_yolo26.py"
 
 
 def _load_make_kernel():
     spec = importlib.util.spec_from_file_location("make_kernel_under_test", MAKE_KERNEL)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_crop_dataset_builder():
+    spec = importlib.util.spec_from_file_location(
+        "make_crop_code_dataset_under_test", CROP_DATASET_BUILDER
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -105,6 +116,10 @@ def test_make_kernel_renders_isolated_zero_channel_init_variant(
     assert '"EXTRA_CHANNEL_INIT": "zero"' in rendered
     assert metadata["id"] == "zephyrpong/hsi-yolo26m-xczero-ablation"
     assert metadata["is_private"] is True
+    assert metadata["dataset_sources"] == [
+        "zephyrpong/hsi-detection-code",
+        "zephyrpong/hsi-competition-raw",
+    ]
 
 
 def test_make_kernel_renders_object_crop_and_tile_variant(
@@ -141,3 +156,40 @@ def test_make_kernel_renders_object_crop_and_tile_variant(
     assert '"TILE_INFERENCE": 1' in rendered
     assert metadata["id"] == "zephyrpong/hsi-yolo26m-crop-tile-ablation"
     assert metadata["is_private"] is True
+    assert metadata["dataset_sources"] == [
+        "zephyrpong/hsi-detection-code",
+        "zephyrpong/hsi-competition-raw",
+        "zephyrpong/hsi-object-crop-code",
+    ]
+
+
+def test_crop_code_dataset_contains_only_the_three_variant_sources(tmp_path: Path) -> None:
+    module = _load_crop_dataset_builder()
+
+    manifest = module.stage(tmp_path)
+
+    expected_sources = {
+        "hsi_detection.tiling.py": "src/hsi_detection/tiling.py",
+        "scripts.prepare_object_crops.py": "scripts/prepare_object_crops.py",
+        "scripts.predict_submission.py": "scripts/predict_submission.py",
+    }
+    assert {path.name for path in tmp_path.iterdir()} == {
+        *expected_sources,
+        "dataset-metadata.json",
+        "payload-manifest.json",
+    }
+    assert manifest["dataset_id"] == "zephyrpong/hsi-object-crop-code"
+    assert {
+        name: details["source"] for name, details in manifest["files"].items()
+    } == expected_sources
+    for name, details in manifest["files"].items():
+        assert details["bytes"] == (tmp_path / name).stat().st_size
+        assert details["sha256"] == module.sha256(tmp_path / name)
+
+
+def test_crop_code_dataset_rejects_unexpected_payload(tmp_path: Path) -> None:
+    module = _load_crop_dataset_builder()
+    (tmp_path / "unexpected.bin").write_bytes(b"do not upload")
+
+    with pytest.raises(RuntimeError, match="未预期文件"):
+        module.stage(tmp_path)

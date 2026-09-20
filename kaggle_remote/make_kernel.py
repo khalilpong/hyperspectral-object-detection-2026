@@ -26,6 +26,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 USERNAME = "zephyrpong"
 CODE_DATASET = f"{USERNAME}/hsi-detection-code"
+CROP_CODE_DATASET = f"{USERNAME}/hsi-object-crop-code"
 # 比赛数据无法通过 competition_sources 挂载（Kaggle 会静默丢弃该字段），
 # 所以把原始比赛 zip 上传成了私有数据集，改用 dataset_sources 挂载
 RAW_DATASET = f"{USERNAME}/hsi-competition-raw"
@@ -137,7 +138,11 @@ def main() -> None:
         "enable_gpu": True,
         "enable_tpu": False,
         "enable_internet": True,
-        "dataset_sources": [CODE_DATASET, RAW_DATASET],
+        "dataset_sources": [
+            CODE_DATASET,
+            RAW_DATASET,
+            *([CROP_CODE_DATASET] if args.object_crops or args.tile_inference else []),
+        ],
         "competition_sources": [],
         "kernel_sources": [],
         "model_sources": [],
