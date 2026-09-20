@@ -23,20 +23,21 @@
 
 ### 当前状态（以 HANDOFF.md 为准，这里是摘要）
 
-- Kaggle 账号 `zephyrpong`。排行榜显示最高 `0.65091` 来自八模型融合，**违反官方单模型规则，只能视为历史不合规记录**。当前已验证合规的 Public 最佳是单 YOLO26m checkpoint 七尺度支持票 `0.63066`（ref `56379896`）。截止 **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）**。
+- Kaggle 账号 `zephyrpong`。排行榜显示最高 `0.65091` 来自八模型融合，**违反官方单模型规则，只能视为历史不合规记录**；Kaggle 会给格式有效的 CSV 评分，但这不代表通过最终规则/代码审核。当前已验证合规的 Public 最佳是单 YOLO26m checkpoint 七尺度支持票 `0.63072`（ref `56392305`）。截止 **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）**。
 - 官方允许同一训练模型的 TTA / multi-scale inference，禁止不同训练模型的 voting、weighted fusion 和 post-NMS fusion。任何 `submission_ens*.csv` 都不得再上传或选为最终提交。
-- 合规候选 `submissions/submission_single_m_hsi16_ms7_f070_sg0125.csv` 已成功提交：同一 YOLO26m checkpoint 七尺度，Public `0.63066`，较合规基线 `0.62953` 提升 `+0.00113`；ref `56379896`，94,094 detections，SHA-256 `E4ED7BBC...3D266`。
-- 私有固定划分 Kernel `zephyrpong/hsi-yolo26m-xczero-ablation` 于 2026-09-20 12:14 仍在运行；只测试额外 13 个输入通道 `random -> zero`，门槛 `0.70443`，不自动提交。
+- 当前合规最佳 `submissions/submission_single_m_hsi16_ms7_f074_sg0125.csv` 已成功提交：同一 YOLO26m checkpoint 七尺度，`fusion_iou=0.74`、`support_gain=0.125`，Public `0.63072`；ref `56392305`，98,556 detections，SHA-256 `E6F5BC18...2CB48E`。它只比前一版 `f0.70` 的 `0.63066` 高 `+0.00006`，说明当前 checkpoint 后处理已接近饱和。
+- zero-init fixed split 最佳 `0.69690`，object-crop fixed split `0.69772`；两者均低于旧同规格 `0.70143` 和门槛 `0.70443`，已否决，不跑全量、不提交。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
 - Kaggle GPU：免费账号每周约 30 小时，本周已用约 20 小时。训一个 yolo26m 全量模型约 2.5 小时。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. 查询并下载 `hsi-yolo26m-xczero-ablation`；严格比较旧固定划分 `0.70143`，只有达到 `0.70443` 才生成全量 zero-init 单模型。
-2. 对现成合规候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
-3. zero-init 不达标时，再考虑同规格新 seed 的固定划分消融，不能直接训练全量。
-4. 后续高潜方向优先对象感知 crop/tiling 或学习式光谱投影；每次只改一个变量并保持单一训练模型。
+1. 下一主线是 `SpectralStem`：一个 checkpoint 内用可学习光谱投影处理 16 通道，再进入 YOLO26m。先做本地构造、预训练迁移、反向传播、checkpoint 新进程恢复和 16 通道预测 smoke。
+2. 当前 HSI16 NPY 的物理波段顺序是 `5,8,13,0,1,...`，所以 5/8/13 identity 初始化应接数组通道索引 `(0,1,2)`；把 `(5,8,13)` 当数组索引会静默接错。
+3. smoke 全通过后，先报告准确配置、预计 GPU 时长和门禁，再经我确认运行 2400/600 fixed split；只有 `>=0.70443` 才训练全量。
+4. 同规格新 seed 只作为方差对照，排在 SpectralStem 后。继续扫 fusion/NMS、zero-init、object-crop、旧 checkpoint tile TTA 均不再投入。
+5. 对任何新候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
 
 **很重要的方法论（这是这个项目用分数换来的）**：
 - 比赛提交始终只用一个训练 checkpoint；同一 checkpoint 的多尺度/TTA可以融合，不同 checkpoint 的输出不能合并。

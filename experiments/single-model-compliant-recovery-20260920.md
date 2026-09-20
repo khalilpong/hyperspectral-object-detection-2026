@@ -13,7 +13,7 @@
 - Rules：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/rules>
 - 主办方澄清：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/727863>
 
-因此，历史 `0.63917` 至 `0.65091` 的多模型提交只保留为审计记录，不再生成、上传或选择为最终提交。当前已验证的合规 Public 基线是单个 YOLO26m HSI16 checkpoint 的七尺度推理：`0.62953`，Kaggle ref `56303572`。
+因此，历史 `0.63917` 至 `0.65091` 的多模型提交只保留为审计记录，不再生成、上传或选择为最终提交。单个 YOLO26m HSI16 checkpoint 的原始七尺度 Public 基线是 `0.62953`（ref `56303572`）；截至 2026-09-20，本路线的合规 Public 最佳已提高到 `0.63072`（ref `56392305`）。
 
 ## 同一 checkpoint 七尺度支持票快筛
 
@@ -52,7 +52,7 @@ fusion IoU 交叉检查：
 - `artifacts/ensemble/single_m_support_gain_20260920.json`
 - `artifacts/ensemble/single_m_support_gain_iou_grid_20260920.json`
 
-## 正式合规候选
+## 第一版正式合规提交：f0.70
 
 - CSV：`submissions/submission_single_m_hsi16_ms7_f070_sg0125.csv`
 - 检测数：94,094；覆盖 1000/1000；无效框 0
@@ -64,7 +64,32 @@ fusion IoU 交叉检查：
 
 远端原始单模型 CSV 有 94,117 条、SHA-256 `EBA65AB84F6FFD99FD06812D2AD14E90690CF39F035F8031781BCC73F3597422`。本候选使用本机缓存重放，和远端 Ultralytics/CUDA 环境存在 23 条检测的微小差异。实际 Public 从 ref `56303572` 的 `0.62953` 提升到 `0.63066`，增量 `+0.00113`；留出预测的 `+0.00140` 方向正确但幅度不能当作精确换算关系。
 
-## zero-init 固定划分消融
+## 第二版正式合规提交：f0.74
+
+在不重新推理 GPU 的前提下复用同一个 fixed-split cache，只细扫 fusion IoU。固定 `support_gain=0.125` 后，局部结果为：
+
+| fusion IoU | fixed-split mAP50-95 |
+|---:|---:|
+| 0.7375 | 0.705531 |
+| **0.7400** | **0.705708** |
+| 0.7425 | 0.705636 |
+
+`f0.74` 相对 `f0.70` 的 `0.705442` 仅增加 `+0.000266`。相邻点同向说明它不是单个孤立点，但增益很小，只足以做一次受控 Public 转移检查。`f0.74` 下再细扫 support gain 后，`0.125` 仍是局部最佳；`0.120=0.705316`、`0.130=0.704729`，不改 gain。
+
+- CSV：`submissions/submission_single_m_hsi16_ms7_f074_sg0125.csv`
+- 检测数：98,556；覆盖 1000/1000；无效框 0
+- SHA-256：`E6F5BC1892988A08FF4D5F97F2F976CC094CA770CFAB377A86708C71482CB48E`
+- Kaggle：2026-09-20 11:27:26 UTC（北京时间 19:27:26）完成；Public `0.63072`；ref `56392305`
+- 相对上一版 `0.63066`：`+0.00006`；相对原始合规基线 `0.62953`：`+0.00119`
+
+这次 Public 方向仍为正，但留出 `+0.000266` 只转化为 Public `+0.00006`。结论不是继续无限细扫，而是：同 checkpoint 后处理已经接近饱和；后续主力应回到能改变模型表示能力的训练变量。
+
+原始细扫结果：
+
+- `artifacts/ensemble/single_m_fusion_iou_fine2_20260920.json`
+- `artifacts/ensemble/single_m_f074_support_gain_fine_20260920.json`
+
+## zero-init 固定划分消融：否决
 
 为寻找更强的合规单模型，新增训练变量：将预训练 RGB 首层之外的 13 个输入通道从随机初始化改为零初始化；通道仍可正常反向传播。其他配置与旧 YOLO26m 固定划分基准保持一致。
 
@@ -73,7 +98,12 @@ fusion IoU 交叉检查：
 - run：`kaggle_ablation_yolo26m_hsi16_xczero_e30`
 - 数据：固定 2400/600，HSI16 P0.5–P99.5
 - 模型：YOLO26m，1024，30 epoch，seed 2026，batch 降级序列 `8/6/4`
-- 2026-09-20 12:14（北京时间）实时状态：`RUNNING`
-- 不自动提交比赛
+- 状态：`success`，训练 return code 0，无 CUDA OOM 或 SHM 错误
+- 最佳：epoch 28，标准 full-val mAP50-95 `0.69690`；最终 epoch 30 为 `0.69648`
+- 相对旧同规格 `0.70143`：最佳 `-0.00453`
+- 相对全量门槛 `0.70443`：最佳 `-0.00753`
+- 结论：未过门禁，否决；不训练全量 3000 张，也不提交比赛
+- `status.json` SHA-256：`B62D6A1DB622BC4DE824BA1436366579296370B9845B2D1A1235E714ABB1718F`
+- `results.csv` SHA-256：`CAA623F19EE8868586B7D430550E28985C1D2BE496183D12C71638E51AB0A064`
 
-门槛：旧同规格固定划分 `0.70143`，zero-init 必须至少达到 `0.70443`（+0.003）才训练全量 3000 张；否则记录为负结果并停止。
+门槛原定为旧同规格固定划分 `0.70143 + 0.003 = 0.70443`。结果明确低于基准和门槛，因此本方向已结束。

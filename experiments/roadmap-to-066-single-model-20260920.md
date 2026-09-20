@@ -2,15 +2,15 @@
 
 ## 结论先行
 
-当前奖项合规的 Public 最佳是 `0.63066`，目标 `0.66` 仍差 `0.02934`。这是一次显著跃升，不能承诺一定达到。四天内最合理的主线不是继续微调 NMS，也不是重写检测器，而是只保留一个 YOLO26m HSI16 checkpoint，直接修复已经量化出的主要误差：小目标的高 IoU 定位。
+当前奖项合规的 Public 最佳是 `0.63072`，目标 `0.66` 仍差 `0.02928`。这是一次显著跃升，不能承诺一定达到。`fusion_iou 0.70 -> 0.74` 的最后一次受控后处理检查只带来 Public `+0.00006`，说明继续细扫 NMS/融合参数不足以跨越差距。下一条主线应改变单模型的光谱表示能力，同时继续用固定 2400/600 门禁控制 GPU 成本。
 
 执行顺序：
 
-1. 等待已经在跑的 zero-init 固定划分消融，不重复训练；
-2. 已验证并否定当前 fixed-split checkpoint 的重叠切片推理；
-3. 训练 `2400 full + 2376 object crop` 的单变量 fixed-split 模型；
-4. object-crop 模型只有标准完整图验证达到 `0.70443` 才进入 3000 张全量训练；tile 是独立可选门禁，只有对新 checkpoint 相对自身基线增加至少 `0.003` 才启用；
-5. 最终 Kaggle Submit 仍需单独确认，不由训练或生成 CSV 自动触发。
+1. zero-init 固定划分已完成并否决：最佳 `0.69690 < 0.70443`；
+2. object-crop 固定划分已完成并否决：`0.69772 < 0.70443`；当前 checkpoint 的重叠切片推理也已否决；
+3. 同 checkpoint `fusion_iou=0.74` 已提交，Public `0.63072`，只比 `f0.70` 高 `0.00006`；停止继续细扫后处理；
+4. 下一训练变量优先 `SpectralStem 16→3→YOLO26m`：以 5/8/13 identity 初始化，再学习全 16 波段的线性组合；先做本地构造/权重迁移/反向传播 smoke，再经用户授权运行 fixed split；
+5. 新 seed 的同规格 YOLO26m 只作为方差对照，不替代 SpectralStem；任何全量训练和 Kaggle Submit 仍需单独确认。
 
 ## 合规边界（事实）
 
@@ -27,7 +27,7 @@
 - 模型：一个 YOLO26m、16 通道 HSI、P0.5–P99.5 shared per-image uint8 编码；
 - 推理：同 checkpoint 七尺度 `832/896/960/1024/1088/1152/1216`；
 - support gain：`0.125`；
-- Public：`0.63066`，ref `56379896`；
+- Public：`0.63072`，ref `56392305`；上一版 `f0.70` 为 `0.63066`，ref `56379896`；
 - 记录：[single-model-compliant-recovery-20260920.md](single-model-compliant-recovery-20260920.md)。
 
 ### fixed-split 误差画像
@@ -70,7 +70,20 @@
 
 训练链路也做了真实反向传播 smoke，而不只停留在数据扫描：YOLO26m 构造出的首层为 `16→64`，预训练权重转移 `768/768`。先用 full+crop YAML 的 `fraction=0.01` 跑通 48 个样本、1 epoch；由于列表顺序使这 48 个样本都来自 full 目录，又补做了 crop-only smoke。后者明确扫描 `labels/train_object_crops` 的 24 个 crop，完成 12 个 batch、1 epoch，退出码为 0，`box/cls/l1` loss 均为有限值。两次 smoke 使用 `imgsz=256`、只用于证明读取和反向传播契约，不是性能实验；其验证 mAP 没有决策意义。
 
-用户明确授权后，最小增量数据集已作为私有 `zephyrpong/hsi-object-crop-code` 创建，状态 `ready`、版本 1；远端四个数据文件（3 个源码文件和 SHA-256 manifest）的名称与大小均已逐项核对。它共含 `52,032` bytes 源码，不含原始比赛数据、crop 数据、模型权重、split manifest、submission 或凭证。私有 fixed-split Kernel `zephyrpong/hsi-yolo26m-crop-ablation` 随后推送版本 1，当前为 `RUNNING`。Kernel 复用原私有代码/权重与原始数据集，再叠加该增量代码；没有竞赛提交步骤。
+用户明确授权后，最小增量数据集已作为私有 `zephyrpong/hsi-object-crop-code` 创建，状态 `ready`、版本 1；远端四个数据文件（3 个源码文件和 SHA-256 manifest）的名称与大小均已逐项核对。它共含 `52,032` bytes 源码，不含原始比赛数据、crop 数据、模型权重、split manifest、submission 或凭证。私有 fixed-split Kernel `zephyrpong/hsi-yolo26m-crop-ablation` 随后推送版本 1。Kernel 复用原私有代码/权重与原始数据集，再叠加该增量代码；没有竞赛提交步骤。
+
+### Object-crop 结果：否决
+
+- 训练成功，return code 0，无 CUDA OOM 或 SHM 错误；2400 张 train 完整图生成 2376 张 train-only crop，600 张 val 保持原始完整图。
+- 标准 full-val 最佳与最终均为 epoch 30 的 `0.69772`，比旧同规格 `0.70143` 低 `0.00371`，比全量门槛 `0.70443` 低 `0.00671`。
+- 结论：不训练全量 object-crop 模型，不对该模型做 tile 扩展，不提交其测试 CSV。
+- `status.json` SHA-256：`DBAD966C5272EBF8FDF8A986B59749D43AF64ADF7487D0451D45D7D86861051E`；`results.csv` SHA-256：`49791CFA5EE7DFB8BAC11456B11BA256844DEE40F5D1F841F6DBC8BF6373FB69`。
+
+### Zero-init 结果：否决
+
+- 训练成功，最佳 epoch 28 为 `0.69690`，最终 epoch 30 为 `0.69648`。
+- 最佳值比旧同规格 `0.70143` 低 `0.00453`，比全量门槛 `0.70443` 低 `0.00753`。
+- 结论：不训练全量 zero-init 模型，不提交其测试 CSV。
 
 ## 已实现的同 checkpoint 切片推理
 
@@ -101,21 +114,23 @@
 
 ## 门禁
 
-| 阶段 | 通过条件 | 不通过动作 |
-|---|---|---|
-| zero-init fixed split | 标准 full-val mAP50-95 `>=0.70443` | 记录负结果，不跑全量 |
-| object-crop fixed split | 标准 600 full-val mAP50-95 `>=0.70443` | 停止该训练路线 |
-| tile TTA | 相对同 checkpoint、同 evaluator 的 full baseline `>=+0.003`，且 cache control 通过 | 不用于全量/提交 |
-| full training | status success、权重和日志完整、单 checkpoint | 不生成正式候选 |
-| final CSV | 1000/1000 图、0 非法框、独立校验通过 | 不上传 |
-| Kaggle Submit | 用户在动作时明确确认，且实时额度已复核 | 不提交 |
+| 阶段 | 通过条件 | 当前状态 | 不通过动作 |
+|---|---|---|---|
+| zero-init fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69690`，否决 | 记录负结果，不跑全量 |
+| object-crop fixed split | 标准 600 full-val mAP50-95 `>=0.70443` | `0.69772`，否决 | 停止该训练路线 |
+| tile TTA | 相对同 checkpoint、同 evaluator 的 full baseline `>=+0.003`，且 cache control 通过 | `-0.00807`，否决 | 不用于全量/提交 |
+| SpectralStem fixed split | 标准 full-val mAP50-95 `>=0.70443` | 尚未运行 | 未达标则不跑全量 |
+| full training | status success、权重和日志完整、单 checkpoint | 无新候选 | 不生成正式候选 |
+| final CSV | 1000/1000 图、0 非法框、独立校验通过 | f0.74 已通过并提交 | 不上传 |
+| Kaggle Submit | 用户在动作时明确确认，且实时额度已复核 | ref `56392305` 已完成 | 不提交 |
 
 ## 备选路线及优先级
 
-1. `SpectralStem 16→3→YOLO26m`：identity 初始化到当前 5/8/13 三通道，再学习全 16 波段线性组合。潜力高于继续手选三波段，但需要自定义模块/YAML/权重重载测试，作为 crop 失败后的 Plan B。
-2. 温和 `cls_pw=0.25/0.5`：Ultralytics 8.4.147 原生支持，工程风险小，但只影响分类 BCE，未直接解决定位主因。
-3. 同 YOLO family 蒸馏：官方 Ultralytics 只支持相同 YOLO family，最终部署学生模型；可能有收益，但 teacher forward 增加显存与时间。[Ultralytics knowledge distillation guide](https://docs.ultralytics.com/guides/knowledge-distillation)
-4. KD-DETR / RT-DETR：研究上有增益，但检测 query/feature 对齐和 16 通道迁移工作量高。KD-DETR 的贡献不是简单接入任意 teacher logits；RT-DETR 的 COCO 结果也不能外推到本数据。[KD-DETR, CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/html/Wang_KD-DETR_Knowledge_Distillation_for_Detection_Transformer_with_Consistent_Distillation_Points_CVPR_2024_paper.html)、[RT-DETR paper](https://arxiv.org/abs/2304.08069)、[official RT-DETR repository](https://github.com/lyuwenyu/RT-DETR)
+1. `SpectralStem 16→3→YOLO26m`：identity 初始化到当前 5/8/13 三通道，再学习全 16 波段线性组合。zero-init 与 object-crop 均未过门禁后，这是当前证据最支持的结构性变量；需要先完成自定义模块/YAML/权重重载 smoke。
+2. 新 seed 的同规格 YOLO26m：只用于估计固定划分方差，仍按 `>=0.70443` 门禁；它没有正向先验，不应抢占 SpectralStem 主线。
+3. 温和 `cls_pw=0.25/0.5`：Ultralytics 8.4.147 原生支持，工程风险小，但只影响分类 BCE，未直接解决定位主因。
+4. 同 YOLO family 蒸馏：最终部署学生模型，可能有收益，但 teacher forward 增加显存与时间，且需要先重新核对当前版本的官方支持边界。[Ultralytics knowledge distillation guide](https://docs.ultralytics.com/guides/knowledge-distillation)
+5. KD-DETR / RT-DETR：研究上有增益，但检测 query/feature 对齐和 16 通道迁移工作量高。KD-DETR 的贡献不是简单接入任意 teacher logits；RT-DETR 的 COCO 结果也不能外推到本数据。[KD-DETR, CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/html/Wang_KD-DETR_Knowledge_Distillation_for_Detection_Transformer_with_Consistent_Distillation_Points_CVPR_2024_paper.html)、[RT-DETR paper](https://arxiv.org/abs/2304.08069)、[official RT-DETR repository](https://github.com/lyuwenyu/RT-DETR)
 
 ## 可复现命令
 
