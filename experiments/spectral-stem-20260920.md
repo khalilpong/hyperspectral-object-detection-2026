@@ -42,19 +42,19 @@
 
 第 6 项证明 projection 不只“有梯度”，还真实进入 trainer optimizer、被保存到 checkpoint。该小样本 mAP 为 0，只是链路 smoke，不是性能证据。临时 run、临时样本列表和子集 `train.cache/val.cache` 已精确清理。
 
-## 已在本地准备、尚未执行的 Kaggle 实验
+## Kaggle fixed-split 实验状态
 
-- 私有代码数据集 staging 已同步新增/更新：
+- 私有代码数据集 `zephyrpong/hsi-detection-code` 版本 8 已于 2026-09-20 创建并达到 `ready`；新增/更新：
   - `hsi_detection.spectral_stem.py`
   - `scripts.train_baseline.py`
   - `run_hsi_yolo26.py`
 - 私有 Kernel staging：`kaggle_remote/kernel_ablation_stem`
-- 目标 Notebook：`zephyrpong/hsi-yolo26m-stem-ablation`
+- 私有 Notebook：`zephyrpong/hsi-yolo26m-stem-ablation`，版本 1，2026-09-20 20:35（北京时间）状态 `RUNNING`。
 - 配置：YOLO26m、HSI16 P0.5-P99.5、固定 2400/600、30 epochs、`imgsz=1024`、seed 2026、首选 batch 8 / workers 2 / device 0。
 - 唯一实验变量：`SpectralStem 16->3`；不启用 object crop、tile inference、训练期 multiscale 或多模型融合。
 - 参考 zero-init fixed-split 的实测总时长 `7247 s`，预计约 2 小时 Kaggle T4；projection 的额外计算量很小。
 
-本地 staging 不代表远端已更新：**尚未创建 `hsi-detection-code` 新版本，尚未 push Kernel，尚未消耗 Kaggle GPU，也没有新的竞赛 Submit。**
+上传前核验：本地载荷 18 个文件、64,840,426 bytes，移除了 13 个可重建 `.pyc`；三份关键源码与 staging SHA-256 一致，凭证扫描无命中。远端版本 8 的 `hsi_detection.spectral_stem.py`、`scripts.train_baseline.py`、`run_hsi_yolo26.py` 大小分别为 12,485 / 9,157 / 26,377 bytes，与本地一致。当前已消耗 Kaggle GPU 运行 fixed split；**没有启动全量训练，也没有新的竞赛 Submit。**
 
 ## 决策门禁
 

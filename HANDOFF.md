@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-20 20:15（北京时间）
+> 最后更新：2026-09-20 20:36（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -14,12 +14,12 @@
 - zero-init 私有消融已完成并否决：最佳 `0.69690`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交。
 - object-crop 私有消融已完成并否决：标准 full-val `0.69772`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交，也不扩展 tile。
 - P1–P99 已否决：固定划分 `0.69668 < 0.70143`；不要重复训练或提交其第九成员候选。
-- SpectralStem 本地门禁已通过：标准模块 checkpoint、optimizer 实际更新、受限安全加载、新进程恢复、16 通道真实 NPY 预测和完整 pytest 均通过；私有 code dataset / Kernel 仅在本地 staged，尚未上传或运行。
+- SpectralStem 本地门禁已通过；私有 `hsi-detection-code` 版本 8 已 `ready`，私有 Kernel `zephyrpong/hsi-yolo26m-stem-ablation` 版本 1 于 2026-09-20 20:35（北京时间）进入 `RUNNING`。这是 fixed 2400/600 消融，不是全量训练或竞赛提交。
 
 ## 👉 接手后第一件事
 
-1. SpectralStem 本地门禁已经完成；先取得用户授权，再为私有 `hsi-detection-code` 创建新版本并 push 私有 `zephyrpong/hsi-yolo26m-stem-ablation` fixed-split Kernel。
-2. 运行后下载并核验 `status.json/results.csv/best.pt/last.pt`；fixed-split 门槛仍是旧 YOLO26m 基准 `0.70143 + 0.003 = 0.70443`。
+1. 只读监控正在运行的私有 `zephyrpong/hsi-yolo26m-stem-ablation` 版本 1；不要重复 push、停止或重启。
+2. 完成后下载并核验 `status.json/results.csv/best.pt/last.pt`；fixed-split 门槛仍是旧 YOLO26m 基准 `0.70143 + 0.003 = 0.70443`。
 3. 新结构达标才申请全量 3000 张训练；未达标就停止。全量训练和任何 Submit 均需再次确认。
 
 ### 成绩与合规状态
@@ -34,8 +34,8 @@
 
 ### 下一步可以试的（按优先级）
 
-1. 经用户确认后启动已 staged 的 `SpectralStem` fixed split；当前 HSI16 NPY 的物理波段 5/8/13 已排列为数组通道索引 0/1/2，identity 初始化接 `(0,1,2)`。
-2. 预计约 2 小时 Kaggle T4；只在标准 full-val `mAP50-95 >= 0.70443` 时申请全量训练。
+1. `SpectralStem` fixed split 已启动；当前 HSI16 NPY 的物理波段 5/8/13 已排列为数组通道索引 0/1/2，identity 初始化接 `(0,1,2)`。
+2. 预计约 2 小时 Kaggle T4；运行中只监控，完成后核验产物；只在标准 full-val `mAP50-95 >= 0.70443` 时申请全量训练。
 3. 新 seed 的同规格 YOLO26m 只作为方差对照，没有正向先验；排在 SpectralStem 后。
 4. zero-init、object-crop、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
 5. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
@@ -91,12 +91,12 @@ kaggle kernels status zephyrpong/<slug>
 
 | 资源 | 说明 |
 |---|---|
-| 私有数据集 `zephyrpong/hsi-detection-code` | 代码（平铺）+ 划分清单 + yolo26m/s 预训练权重 + 主脚本 |
+| 私有数据集 `zephyrpong/hsi-detection-code` | 版本 8 已 `ready`；代码（含 SpectralStem）+ 划分清单 + yolo26m/s 预训练权重 + 主脚本 |
 | 私有数据集 `zephyrpong/hsi-competition-raw` | 原始比赛 zip（比赛数据无法直接挂载进 Notebook，见 Kaggle 文档第 5 条坑） |
 | Notebook `hsi-yolo26m-{smoke,ablation,full}`、`hsi-yolo26l-ablation` | 16 波段 m / l 的各次训练，产物在 `kaggle_remote/outputs/` 对应目录 |
 | Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full/ablation 均完成并下载；ablation `0.69668` 低于旧基准 `0.70143`，该方向已否决 |
 | Notebook `hsi-yolo26m-prgb-{ablation,full}`、`prgb368-full`、`prgb0715-full` | 伪RGB（5/8/13、3/6/8、0/7/15）的训练，产物同上 |
-| `hsi-yolo26m-stem-ablation` | **仅本地 staging，尚未 push**；SpectralStem fixed 2400/600，需用户授权后启动 |
+| `hsi-yolo26m-stem-ablation` | 私有 Kernel 版本 1 `RUNNING`；SpectralStem fixed 2400/600，30 epochs；不要重复启动 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 
