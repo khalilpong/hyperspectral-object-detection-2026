@@ -63,6 +63,10 @@ def main() -> None:
                         help="HSI16 共享缩放下百分位")
     parser.add_argument("--upper-percentile", type=float, default=99.5,
                         help="HSI16 共享缩放上百分位")
+    parser.add_argument("--object-crops", action="store_true",
+                        help="训练时给每张源图增加一个 128x256 对象感知 crop")
+    parser.add_argument("--tile-inference", action="store_true",
+                        help="推理时合并同一 checkpoint 的全图与 128x256 tiles")
     parser.add_argument("--run-name", help="默认按 模式_模型_数据_轮数 自动生成")
     parser.add_argument("--machine-shape", default=None,
                         help="GPU 型号；注意 NvidiaL4 对本账号不开放（推送会 400），默认留空用 Kaggle 分配的 GPU")
@@ -72,6 +76,8 @@ def main() -> None:
         _validate_percentiles(args.lower_percentile, args.upper_percentile)
     except ValueError as error:
         parser.error(str(error))
+    if (args.object_crops or args.tile_inference) and args.data != "hsi16":
+        parser.error("--object-crops/--tile-inference 目前只支持 --data hsi16")
 
     model_tag = args.model.removesuffix(".pt")
     if args.data == "hsi16":
@@ -90,7 +96,9 @@ def main() -> None:
     else:
         raise SystemExit(f"未知 --data {args.data}")
     init_tag = "" if args.extra_channel_init == "random" else f"_xc{args.extra_channel_init}"
-    variant_tag = data_tag + init_tag
+    crop_tag = "_crop" if args.object_crops else ""
+    tile_tag = "_tile" if args.tile_inference else ""
+    variant_tag = data_tag + init_tag + crop_tag + tile_tag
     run_name = args.run_name or f"kaggle_{args.mode}_{model_tag}{variant_tag}_e{args.epochs}"
     slug = f"hsi-{model_tag}{variant_tag}-{args.mode}".replace("_", "-")
 
@@ -108,6 +116,8 @@ def main() -> None:
         f'    "EXTRA_CHANNEL_INIT": "{args.extra_channel_init}",\n'
         f'    "LOWER_PERCENTILE": {args.lower_percentile!r},\n'
         f'    "UPPER_PERCENTILE": {args.upper_percentile!r},\n'
+        f'    "OBJECT_CROPS": {1 if args.object_crops else 0},\n'
+        f'    "TILE_INFERENCE": {1 if args.tile_inference else 0},\n'
         "}"
     )
     rendered, count = re.subn(r"CONFIG = \{.*?\n\}", config, source, count=1, flags=re.S)
@@ -142,7 +152,8 @@ def main() -> None:
     print(f"  配置     : mode={args.mode} model={args.model} epochs={args.epochs} "
           f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
           f"seed={args.seed} extra_channel_init={args.extra_channel_init} "
-          f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g}")
+          f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "
+          f"object_crops={args.object_crops} tile_inference={args.tile_inference}")
     print(f"推送：cd {folder.name} && kaggle kernels push -p .")
 
 

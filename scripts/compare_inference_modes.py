@@ -21,6 +21,8 @@ from predict_submission import (
     PredictionArrays,
     _checkpoint_channels,
     _collect_multiscale_predictions,
+    _collect_tiled_predictions,
+    _fused_full_and_tiled_predictions,
     _fused_multiscale_predictions,
     _normalize_multiscale,
     _numeric_paths,
@@ -208,7 +210,28 @@ def main() -> None:
         default=0.001,
         help="Require this held-out mAP50-95 gain before recommending TTA.",
     )
+    parser.add_argument(
+        "--tile-size",
+        nargs=2,
+        type=int,
+        metavar=("HEIGHT", "WIDTH"),
+        help="Also evaluate same-checkpoint overlapping NPY tiles.",
+    )
+    parser.add_argument(
+        "--tile-stride",
+        nargs=2,
+        type=int,
+        default=(96, 192),
+        metavar=("HEIGHT", "WIDTH"),
+    )
+    parser.add_argument("--tile-imgsz", type=int, default=1024)
     args = parser.parse_args()
+
+    if args.tile_size:
+        if any(value <= 0 for value in (*args.tile_size, *args.tile_stride, args.tile_imgsz)):
+            parser.error("tile size, stride, and model input size must be positive")
+        if any(stride > size for stride, size in zip(args.tile_stride, args.tile_size, strict=True)):
+            parser.error("each tile stride must not exceed its tile size")
 
     if not args.weights.is_file():
         raise FileNotFoundError(f"Weights not found: {args.weights.resolve()}")
@@ -287,6 +310,49 @@ def main() -> None:
         )
         fusion_keys[key] = fusion_iou
 
+    tile_keys: dict[str, float] = {}
+    tile_prediction_elapsed: float | None = None
+    if args.tile_size:
+        if input_format != "npy":
+            raise ValueError("Tile comparison currently requires NPY validation inputs")
+        tile_height, tile_width = args.tile_size
+        stride_height, stride_width = args.tile_stride
+        tile_started = time.perf_counter()
+        tiled_predictions = _collect_tiled_predictions(
+            model,
+            image_paths,
+            channels=channels,
+            batch_size=args.batch,
+            tile_height=tile_height,
+            tile_width=tile_width,
+            stride_height=stride_height,
+            stride_width=stride_width,
+            tile_imgsz=args.tile_imgsz,
+            predict_kwargs={
+                "batch": args.batch,
+                "device": args.device,
+                "half": True,
+                "conf": args.conf,
+                "iou": args.iou,
+                "max_det": args.max_det,
+                "verbose": False,
+            },
+        )
+        tile_prediction_elapsed = time.perf_counter() - tile_started
+        for fusion_iou in args.fusion_ious:
+            key = f"multiscale_plus_tiles_iou_{fusion_iou:.2f}".replace(".", "_")
+            results[key] = _evaluate_predictions(
+                _fused_full_and_tiled_predictions(
+                    predictions_by_scale,
+                    tiled_predictions,
+                    image_paths,
+                    fusion_iou=fusion_iou,
+                    max_det=args.max_det,
+                ),
+                names,
+            )
+            tile_keys[key] = fusion_iou
+
     standard_map = float(results["standard"]["map50_95"])
     custom_standard_map = float(results["custom_standard"]["map50_95"])
     control_delta = custom_standard_map - standard_map
@@ -294,14 +360,14 @@ def main() -> None:
     eligible_modes = {"standard": standard_map, "tta": float(results["tta"]["map50_95"])}
     if control_passed:
         eligible_modes.update(
-            {key: float(results[key]["map50_95"]) for key in fusion_keys}
+            {key: float(results[key]["map50_95"]) for key in (*fusion_keys, *tile_keys)}
         )
     best_mode = max(eligible_modes, key=eligible_modes.__getitem__)
     best_gain = eligible_modes[best_mode] - standard_map
     if best_gain < args.minimum_gain:
         best_mode = "standard"
         best_gain = 0.0
-    chosen_fusion_iou = fusion_keys.get(best_mode)
+    chosen_fusion_iou = {**fusion_keys, **tile_keys}.get(best_mode)
     report = {
         "schema_version": 1,
         "weights": str(args.weights.resolve()),
@@ -319,6 +385,10 @@ def main() -> None:
             "fusion_ious": args.fusion_ious,
             "control_tolerance": args.control_tolerance,
             "multi_scale_prediction_elapsed_seconds": prediction_elapsed,
+            "tile_size": args.tile_size,
+            "tile_stride": list(args.tile_stride) if args.tile_size else None,
+            "tile_imgsz": args.tile_imgsz if args.tile_size else None,
+            "tile_prediction_elapsed_seconds": tile_prediction_elapsed,
         },
         "results": results,
         "custom_evaluator_control": {
@@ -328,7 +398,10 @@ def main() -> None:
         "recommendation": {
             "mode": best_mode,
             "augment": best_mode == "tta",
-            "multi_scale": list(scales) if best_mode in fusion_keys else [],
+            "multi_scale": list(scales) if best_mode in (*fusion_keys, *tile_keys) else [],
+            "tile_size": list(args.tile_size) if best_mode in tile_keys else None,
+            "tile_stride": list(args.tile_stride) if best_mode in tile_keys else None,
+            "tile_imgsz": args.tile_imgsz if best_mode in tile_keys else None,
             "fusion_iou": chosen_fusion_iou,
             "gain_map50_95": best_gain,
             "tta_gain_map50_95": float(results["tta"]["map50_95"]) - standard_map,

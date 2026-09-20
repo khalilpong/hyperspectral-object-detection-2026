@@ -4,7 +4,7 @@ import argparse
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Iterator, Sequence, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,10 @@ os.environ.setdefault("YOLO_CONFIG_DIR", str(Path(".ultralytics").resolve()))
 from ultralytics import YOLO
 
 from hsi_detection.submission import clip_xyxy
+from hsi_detection.tiling import map_tile_boxes_to_image, tile_windows
+
+
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -35,7 +39,7 @@ def _numeric_paths(directory: Path, suffix: str) -> list[Path]:
         ) from error
 
 
-def _batches(paths: Sequence[Path], batch_size: int) -> Iterator[Sequence[Path]]:
+def _batches(paths: Sequence[_T], batch_size: int) -> Iterator[Sequence[_T]]:
     if batch_size <= 0:
         raise ValueError("--batch must be positive")
     for start in range(0, len(paths), batch_size):
@@ -362,6 +366,139 @@ def _collect_multiscale_predictions(
     return predictions_by_scale
 
 
+def _collect_tiled_predictions(
+    model: YOLO,
+    image_paths: Sequence[Path],
+    *,
+    channels: int,
+    batch_size: int,
+    tile_height: int,
+    tile_width: int,
+    stride_height: int,
+    stride_width: int,
+    tile_imgsz: int,
+    predict_kwargs: dict[str, object],
+) -> dict[Path, list[PredictionArrays]]:
+    """Run one checkpoint on overlapping HSI tiles and map core-owned boxes to full images."""
+    if batch_size <= 0:
+        raise ValueError("--batch must be positive")
+    predictions: dict[Path, list[PredictionArrays]] = {}
+    tile_kwargs = {**predict_kwargs, "imgsz": tile_imgsz, "augment": False}
+    legacy_half = tile_kwargs.pop("half", None)
+    if legacy_half and "quantize" not in tile_kwargs:
+        tile_kwargs["quantize"] = 16
+    for image_index, path in enumerate(image_paths, start=1):
+        array = np.load(path, allow_pickle=False)
+        if array.ndim != 3 or array.shape[2] != channels:
+            raise ValueError(
+                f"Expected H x W x {channels} input at {path.resolve()}, got {array.shape}"
+            )
+        if array.dtype != np.uint8:
+            raise ValueError(f"Expected uint8 input at {path.resolve()}, got {array.dtype}")
+        image_height, image_width = map(int, array.shape[:2])
+        windows = tile_windows(
+            image_height,
+            image_width,
+            tile_height=tile_height,
+            tile_width=tile_width,
+            stride_height=stride_height,
+            stride_width=stride_width,
+        )
+        records: list[PredictionArrays] = []
+        for window_batch in _batches(windows, batch_size):
+            arrays = [
+                np.ascontiguousarray(array[window.y0 : window.y1, window.x0 : window.x1])
+                for window in window_batch
+            ]
+            results = model.predict(source=arrays, stream=False, **tile_kwargs)
+            if len(results) != len(window_batch):
+                raise RuntimeError(
+                    f"Expected {len(window_batch)} tile results for {path}, received {len(results)}"
+                )
+            for window, result in zip(window_batch, results, strict=True):
+                result_shape = tuple(map(int, result.orig_shape))
+                if result_shape != (window.height, window.width):
+                    raise RuntimeError(
+                        f"Tile result shape {result_shape} does not match "
+                        f"{(window.height, window.width)} for {path}"
+                    )
+                if result.boxes is None:
+                    local_boxes = np.empty((0, 4), dtype=np.float32)
+                    classes = np.empty(0, dtype=np.float32)
+                    confidences = np.empty(0, dtype=np.float32)
+                else:
+                    local_boxes = result.boxes.xyxy.detach().cpu().numpy()
+                    classes = result.boxes.cls.detach().cpu().numpy()
+                    confidences = result.boxes.conf.detach().cpu().numpy()
+                mapped_boxes, keep = map_tile_boxes_to_image(local_boxes, window)
+                records.append(
+                    PredictionArrays(
+                        path=path,
+                        boxes=mapped_boxes[keep],
+                        classes=classes[keep],
+                        confidences=confidences[keep],
+                        orig_shape=(image_height, image_width),
+                    )
+                )
+        predictions[path] = records
+        if image_index % 25 == 0 or image_index == len(image_paths):
+            print(
+                f"tile inference: {image_index}/{len(image_paths)} images, "
+                f"{sum(len(items) for items in predictions.values())} tile sources",
+                flush=True,
+            )
+    return predictions
+
+
+def _fused_full_and_tiled_predictions(
+    predictions_by_scale: dict[int, dict[Path, PredictionArrays]],
+    tiled_predictions: dict[Path, list[PredictionArrays]],
+    image_paths: Sequence[Path],
+    *,
+    fusion_iou: float,
+    max_det: int,
+    support_gain: float = 0.0,
+) -> Iterator[PredictionArrays]:
+    """Fuse full-image scales and core-filtered tiles from the same checkpoint."""
+    scales = tuple(predictions_by_scale)
+    if not scales:
+        raise ValueError("At least one full-image prediction pass is required")
+    for path in image_paths:
+        full_records = [predictions_by_scale[scale][path] for scale in scales]
+        tile_records = tiled_predictions[path]
+        records = [*full_records, *tile_records]
+        if not tile_records:
+            raise RuntimeError(f"No tile predictions were produced for {path}")
+        if len({record.orig_shape for record in records}) != 1:
+            raise RuntimeError(f"Inconsistent original shapes across full/tile passes for {path}")
+        boxes = np.concatenate([record.boxes for record in records], axis=0)
+        classes = np.concatenate([record.classes for record in records], axis=0)
+        confidences = np.concatenate([record.confidences for record in records], axis=0)
+        source_ids = np.concatenate(
+            [
+                np.full(len(record.boxes), source_index, dtype=np.int64)
+                for source_index, record in enumerate(records)
+            ]
+        )
+        fused_boxes, fused_classes, fused_confidences = _box_vote(
+            boxes,
+            classes,
+            confidences,
+            iou_threshold=fusion_iou,
+            max_det=max_det,
+            source_ids=source_ids,
+            support_gain=support_gain,
+            total_sources=len(records),
+        )
+        yield PredictionArrays(
+            path=path,
+            boxes=fused_boxes,
+            classes=fused_classes,
+            confidences=fused_confidences,
+            orig_shape=records[0].orig_shape,
+        )
+
+
 def _fused_multiscale_predictions(
     predictions_by_scale: dict[int, dict[Path, PredictionArrays]],
     image_paths: Sequence[Path],
@@ -456,9 +593,40 @@ def main() -> None:
             "fused boxes. Zero preserves the legacy max-confidence score."
         ),
     )
+    parser.add_argument(
+        "--tile-size",
+        nargs=2,
+        type=int,
+        metavar=("HEIGHT", "WIDTH"),
+        help=(
+            "Run the same checkpoint on overlapping NPY tiles in addition to the full image. "
+            "Boxes are mapped back to the full image and assigned by non-overlapping center cores."
+        ),
+    )
+    parser.add_argument(
+        "--tile-stride",
+        nargs=2,
+        type=int,
+        default=(96, 192),
+        metavar=("HEIGHT", "WIDTH"),
+        help="Tile stride in source-image pixels (default: 96 192).",
+    )
+    parser.add_argument(
+        "--tile-imgsz",
+        type=int,
+        default=1024,
+        help="Model input size for each tile (default: 1024).",
+    )
     args = parser.parse_args()
     if args.augment and args.multi_scale:
         parser.error("--augment and --multi-scale are mutually exclusive")
+    if args.augment and args.tile_size:
+        parser.error("--augment and --tile-size are mutually exclusive")
+    if args.tile_size:
+        if any(value <= 0 for value in (*args.tile_size, *args.tile_stride, args.tile_imgsz)):
+            parser.error("tile size, stride, and model input size must be positive")
+        if any(stride > size for stride, size in zip(args.tile_stride, args.tile_size, strict=True)):
+            parser.error("each tile stride must not exceed its tile size")
 
     model = YOLO(str(args.weights.resolve()))
     channels = _checkpoint_channels(model)
@@ -476,6 +644,8 @@ def main() -> None:
             f"A {channels}-channel checkpoint requires NPY inputs; use --input-format npy "
             "and the multispectral test directory"
         )
+    if args.tile_size and input_format != "npy":
+        raise ValueError("--tile-size currently requires NPY inputs so spectral channels stay exact")
 
     predict_kwargs: dict[str, object] = dict(
         batch=args.batch,
@@ -498,18 +668,30 @@ def main() -> None:
             scales=scales,
             predict_kwargs=predict_kwargs,
         )
-        prediction_items = _fused_multiscale_predictions(
-            predictions_by_scale,
-            image_paths,
-            fusion_iou=args.fusion_iou,
-            max_det=args.max_det,
-            support_gain=args.support_gain,
-        )
-        inference_description = (
-            "multi-scale " + "/".join(str(scale) for scale in scales) + f", vote IoU {args.fusion_iou:g}"
-        )
-        if args.support_gain:
-            inference_description += f", support gain {args.support_gain:g}"
+    elif args.tile_size:
+        single_scale_kwargs = {
+            **predict_kwargs,
+            "imgsz": args.imgsz,
+            "augment": False,
+        }
+        records = {
+            record.path: record
+            for record in _prediction_arrays(
+                model,
+                image_paths,
+                image_directory=args.images,
+                input_format=input_format,
+                channels=channels,
+                batch_size=args.batch,
+                predict_kwargs=single_scale_kwargs,
+            )
+        }
+        if set(records) != set(image_paths):
+            raise RuntimeError(
+                f"Full-image pass returned {len(records)} of {len(image_paths)} images"
+            )
+        scales = (args.imgsz,)
+        predictions_by_scale = {args.imgsz: records}
     else:
         single_scale_kwargs = {
             **predict_kwargs,
@@ -526,6 +708,53 @@ def main() -> None:
             predict_kwargs=single_scale_kwargs,
         )
         inference_description = f"imgsz {args.imgsz}" + (", TTA" if args.augment else "")
+
+    if args.tile_size:
+        tile_height, tile_width = args.tile_size
+        stride_height, stride_width = args.tile_stride
+        tiled_predictions = _collect_tiled_predictions(
+            model,
+            image_paths,
+            channels=channels,
+            batch_size=args.batch,
+            tile_height=tile_height,
+            tile_width=tile_width,
+            stride_height=stride_height,
+            stride_width=stride_width,
+            tile_imgsz=args.tile_imgsz,
+            predict_kwargs=predict_kwargs,
+        )
+        prediction_items = _fused_full_and_tiled_predictions(
+            predictions_by_scale,
+            tiled_predictions,
+            image_paths,
+            fusion_iou=args.fusion_iou,
+            max_det=args.max_det,
+            support_gain=args.support_gain,
+        )
+        inference_description = (
+            "full "
+            + "/".join(str(scale) for scale in scales)
+            + f" + tiles {tile_height}x{tile_width} stride {stride_height}x{stride_width}"
+            + f" at {args.tile_imgsz}, vote IoU {args.fusion_iou:g}"
+        )
+        if args.support_gain:
+            inference_description += f", support gain {args.support_gain:g}"
+    elif args.multi_scale:
+        prediction_items = _fused_multiscale_predictions(
+            predictions_by_scale,
+            image_paths,
+            fusion_iou=args.fusion_iou,
+            max_det=args.max_det,
+            support_gain=args.support_gain,
+        )
+        inference_description = (
+            "multi-scale "
+            + "/".join(str(scale) for scale in scales)
+            + f", vote IoU {args.fusion_iou:g}"
+        )
+        if args.support_gain:
+            inference_description += f", support gain {args.support_gain:g}"
 
     rows: list[dict[str, int | float]] = []
     next_id = 0

@@ -23,7 +23,7 @@
 
 固定条件：16 通道 P0.5–P99.5、七尺度 `832/896/960/1024/1088/1152/1216`、NMS IoU `0.70`、fusion IoU `0.70`、`conf=0.0001`、`max_det=300`。每个尺度只是同一 checkpoint 的输入变换，符合主办方的单模型多尺度许可。
 
-600 张固定留出集，复用 `artifacts/ensemble_cache/m.pkl`：
+600 张固定留出集，复用 `artifacts/ensemble_cache/m.pkl`。2026-09-20 重新推理溯源确认：该 cache 来自 fixed-split ablation `last.pt`，不是上面的 full-data 提交权重；1024 pass 的抽样框、类别和置信度逐项完全一致。因此它用于选择同架构的推理规则，再把选定规则应用到 full-data 单 checkpoint：
 
 | support gain | mAP50-95 | 相对 gain=0 |
 |---:|---:|---:|
