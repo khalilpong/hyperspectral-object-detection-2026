@@ -65,15 +65,24 @@ checkpoint。RT-DETR 所需三个新/更新源码与 runner 已逐文件 SHA-256
 核验通过。官方权重未混入 CC0 staging，由 Kernel 联网从 Ultralytics Assets
 获取。
 
-## 尚未证明与下一门禁
+## 远程 smoke 结果与下一门禁
 
-尚未证明：Kaggle T4 显存/吞吐、1024 分辨率 batch、30 epoch fixed split、
-正式 fixed-val mAP、full-data 或 Public Score。下一步只能是独立 RT-DETR-L
-HSI16 Kaggle smoke（优先 batch 2/1），成功后再跑固定 2400/600；固定划分仍
-必须达到 `0.70443` 才能训练全量。它不得与 YOLO26m、DFL2.0 或 DFL2.5 的
-预测融合。独立私有 Kernel `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于
-2026-09-22 04:01（北京时间）推送，首次状态核验为 `RUNNING`。不要重启；完成
-后按环境、batch 降级、预训练迁移、训练、fresh reload、NPY 推理与 checker
-逐项判断 smoke 是否通过。架构感知 `scripts/check_fixed_split_gate.py` 已兼容
-RT-DETR，并回放两条旧 YOLO DFL 结果保持一致；`kaggle_remote/kernel_ablation_rtdetr`
-已生成且语法编译通过，但 smoke 成功前不得推送。
+独立私有 Kernel `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 2026-09-22
+04:29（北京时间）完成并通过全部硬门禁：
+
+- Kaggle 环境为 2×T4；训练只使用 device 0，batch 2 / workers 2 一次成功；
+- GPU 峰值约 7427 MiB，无 CUDA OOM 或 shared-memory 错误；
+- 官方预训练迁移 `940/941` 项，4/18 个 decoder 分类行按类名迁移，RGB
+  HGStem 显式迁移到 16 通道，额外 13 通道 random；
+- 1 epoch 用时 1131 秒，保存并验证 `best.pt`/`last.pt`；独立推理进程从
+  `last.pt` 重载，1000 张 16 通道 NPY 推理成功；
+- CSV 为 300000 框、1000/1000 图、0 invalid，checker 通过；
+- `status.json` / `results.csv` / smoke CSV SHA-256 分别为
+  `C707F38A...9A76` / `C20905AF...8A8F` / `3424E5F0...462B`。
+
+尚未证明：30 epoch fixed-val mAP、full-data 或 Public Score。独立 fixed
+2400/600 私有 Kernel `zephyrpong/hsi-rtdetr-l-ablation` version 1 已于 04:43
+推送，04:44 状态为 `RUNNING`。它必须达到 `0.70443` 才能训练全量，不得与
+YOLO26m、DFL2.0/2.5 或任何其他 checkpoint 融合。架构感知
+`scripts/check_fixed_split_gate.py` 已兼容 RT-DETR，并回放两条旧 YOLO DFL
+结果保持一致。
