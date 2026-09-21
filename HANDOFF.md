@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 03:10（北京时间）
+> 最后更新：2026-09-22 04:02（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -21,8 +21,8 @@
 - `cls_pw=0.25` 私有 fixed-split 消融已完成并否决：固定 2400/600，唯一训练变量为分类频次权重；最佳 epoch 27 为 `0.69863`（mAP50 `0.95662`），最终 epoch 30 为 `0.69862`，低于普通同规格 e30 `0.70143` 和 `0.70443` 门槛。训练 return code 0、batch 8/workers 2/device 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 36,784 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
 - random-affine `scale=0.3` 私有 fixed-split 消融已完成并否决：固定 2400/600，已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于 `0.70443` 门槛 `0.00451`。训练 return code 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 31,848 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
 - 同 checkpoint 七尺度来源消融已完成并否决：七项 leave-one-out、中心 3/5 尺度和两组固定对称权重共 11 个候选均低于 `0.70570818` control；最好是删除 `1216`，仍低 `0.00044541`。保留全部七尺度统一权重，不生成或提交新候选。
-- `dfl=2.0` 与 `dfl=2.5` 两个彼此独立的单 YOLO26m fixed-split 私有作业正在 Kaggle 运行；各自只改变 DFL gain，按 `0.70443` 分别门禁，绝不融合二者。
-- RT-DETR-L HSI16 后备 vertical slice 已在本地跑通：官方 `rtdetr-l.pt`（SHA-256 `6DE60B10...8E73F`）可显式迁移 RGB HGStem 到 16 通道，真实预训练微型 trainer、checkpoint fresh reload、NPY inference、CSV 与 checker 全链路通过；尚未启动 Kaggle GPU，不能写成 fixed-split 或实战通过。
+- `dfl=2.0` 与 `dfl=2.5` 两个彼此独立的单 YOLO26m fixed-split 私有作业均已完成并否决：最佳/最终分别为 `0.70165` 和 `0.70186`，虽比普通 e30 `0.70143` 高 `+0.00022/+0.00043`，但仍比 `0.70443` 门禁低 `0.00278/0.00257`；不跑对应 full-data、不生成正式候选、不提交，且绝不融合二者。
+- RT-DETR-L HSI16 后备 vertical slice 已在本地跑通：官方 `rtdetr-l.pt`（SHA-256 `6DE60B10...8E73F`）可显式迁移 RGB HGStem 到 16 通道，真实预训练微型 trainer、checkpoint fresh reload、NPY inference、CSV 与 checker 全链路通过。远程 runner 已按架构分支接入并通过 `110` 项测试，私有代码数据集新版本已 `ready`；独立 smoke `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 04:01 推送并处于 `RUNNING`。这仍不是 fixed-split 或实战成绩。
 
 ## 👉 接手后第一件事
 
@@ -30,9 +30,9 @@
 2. `cls_pw=0.25` fixed split 已以最佳 `0.69863 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
 3. phase-aware fixed split 已以 `0.69935 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
 4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
-5. 当前正在运行 `dfl=2.0` 与 `dfl=2.5` 两个独立 fixed-split 作业；不要重启。完成后下载到不同目录，使用 `scripts/check_fixed_split_gate.py` 分别核验；只有 `>=0.70443` 的候选才进入对应 full-data。
-6. 当前持续目标已明确授权合规 Kaggle GPU 运行与提交；仍需在每次动作前复核单 checkpoint 血缘、门禁、提交格式与 Phase 2 数据覆盖，绝不提交历史 ensemble。
-7. 若两个 DFL 候选均不过门禁，架构级后备是 RT-DETR-L HSI16：先跑独立 Kaggle smoke（batch 2/1），再决定 fixed 2400/600；仍按 `0.70443` 门禁，且绝不能与 YOLO/其他 RT-DETR checkpoint 融合。
+5. `dfl=2.0/2.5` 都已门禁失败；不要启动其 full-data，也不要上传两条作业各自产生的测试 CSV。
+6. 当前持续目标允许继续做合规的 Kaggle GPU 门禁实验；任何最终 Competition Submit 仍须在动作前单独确认，并复核单 checkpoint 血缘、Phase 2 数据覆盖与提交格式，绝不提交历史 ensemble。
+7. 当前只监控 `zephyrpong/hsi-rtdetr-l-smoke` version 1，状态为 `RUNNING`；不要重启。完成后先下载到独立目录，核验 T4、batch 降级、官方预训练加载、16 通道迁移、1 epoch、checkpoint reload、NPY 推理和 checker。只有 smoke 全链路成功才生成独立 fixed 2400/600；fixed 仍须达到 `0.70443`，且绝不能与 YOLO/其他 RT-DETR checkpoint 融合。
 
 ### 成绩与合规状态
 
@@ -46,16 +46,13 @@
 
 ### 下一步可以试的（按优先级）
 
-1. `cls_pw=0.25` fixed split 最佳只有 `0.69863`，低普通同规格 e30 `0.00280`；门禁失败，不跑 full-data、不提交。
-2. phase-aware HSI16 fixed split 已完成但只有 `0.69935`，低普通同规格 e30 `0.00208`；门禁失败，不跑 full-data、不提交。
-3. YOLO26m e45 fixed split 已完成但只有 `0.69899`，低 e30 `0.00244`；门禁失败，不跑 full-data e45。
-4. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 只增 `+0.00016978`，低于 `+0.001` 门禁，不再投入。
-5. random-affine `scale=0.3` fixed split 已完成但只有 `0.69992`，低普通同规格 e30 `0.00151`；门禁失败，不跑 full-data、不提交。
-6. 同规格新 seed 只能作为新的单变量 fixed-split 方差对照；`cls_pw=0.5` 因与已失败的 `0.25` 同机制、先验更弱，优先级更低。启动前必须重新取得授权。
-8. zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
-9. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
+1. 等待并核验正在运行的 RT-DETR-L HSI16 smoke；不要重复推送。
+2. smoke 成功后才生成一个独立 RT-DETR-L fixed 2400/600 作业；若 smoke OOM、预训练/迁移、训练、重载、推理或 checker 任一失败，立即停止该架构。
+3. `dfl=2.0/2.5`、zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
+4. 同规格新 seed 与 `cls_pw=0.5` 的先验都弱于当前 RT-DETR 架构门禁；不抢在 smoke 前启动。
+5. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
-> 提交额度每天 3 次，北京时间 08:00 重置。19:27 已用完当日最后一次，下一次提交须等重置后再实时复核。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
+> 提交额度每天 3 次，北京时间 08:00 重置；任何下一次 Submit 都必须先实时复核当日额度并取得用户单独确认。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
 
 ### 常用命令（Git Bash，项目根目录）
 
@@ -106,7 +103,7 @@ kaggle kernels status zephyrpong/<slug>
 
 | 资源 | 说明 |
 |---|---|
-| 私有数据集 `zephyrpong/hsi-detection-code` | 当前状态已实时核验为 `ready`；代码（含 SpectralStem、phase-aware HSI16、`cls_pw` 与 random-affine `scale` 接入）+ 划分清单 + yolo26m/s 预训练权重 + 主脚本 |
+| 私有数据集 `zephyrpong/hsi-detection-code` | 2026-09-22 04:00 新版本已实时核验为 `ready`；远端清单含 RT-DETR trainer/HGStem 迁移/架构感知推理入口，以及既有 SpectralStem、phase-aware、`cls_pw`、scale 接入、划分清单与 yolo26m/s 权重；`rtdetr-l.pt` 不放进该 CC0 staging，Kernel 联网从官方 Ultralytics Assets 获取 |
 | 私有数据集 `zephyrpong/hsi-competition-raw` | 原始比赛 zip（比赛数据无法直接挂载进 Notebook，见 Kaggle 文档第 5 条坑） |
 | Notebook `hsi-yolo26m-{smoke,ablation,full}`、`hsi-yolo26l-ablation` | 16 波段 m / l 的各次训练，产物在 `kaggle_remote/outputs/` 对应目录 |
 | Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full/ablation 均完成并下载；ablation `0.69668` 低于旧基准 `0.70143`，该方向已否决 |
@@ -116,6 +113,8 @@ kaggle kernels status zephyrpong/<slug>
 | `hsi-yolo26m-phase-ablation` | 私有 Kernel 版本 1 `COMPLETE`；phase-aware HSI16 fixed 2400/600，epoch 30 最佳/最终 `0.69935`，门禁失败；不跑 full-data、不提交 |
 | `hsi-yolo26m-clspw025-ablation` | 私有 Kernel 版本 1 `COMPLETE`；普通 HSI16 fixed 2400/600，`cls_pw=0.25`，最佳 epoch 27 `0.69863`，门禁失败；不跑 full-data、不提交 |
 | `hsi-yolo26m-scale030-ablation` | 私有 Kernel 版本 1 `COMPLETE`；普通 HSI16 fixed 2400/600，random-affine `scale=0.3`，最佳/最终 epoch 30 `0.69992`，门禁失败；不跑 full-data、不提交 |
+| `hsi-yolo26m-dfl200-ablation` / `dfl250-ablation` | 私有 Kernel 版本 1 均 `COMPLETE`；最佳/最终 `0.70165/0.70186`，均未过 `0.70443`；不跑 full-data、不提交 |
+| `hsi-rtdetr-l-smoke` | 私有 Kernel 版本 1 于 04:01 推送，当前 `RUNNING`；1 epoch、1024、HSI16、batch `2→1` 降级，仅做远程全链路门禁，不是 fixed-split 成绩 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 

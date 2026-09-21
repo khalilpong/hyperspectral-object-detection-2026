@@ -58,9 +58,12 @@ CPU，1 epoch，imgsz 64）：
 - fresh-process NPY inference 返回标准 `result.boxes`；
 - 现有提交脚本输出 300 框、0 dropped，checker 通过 1/1 图。
 
-完整测试：`110 passed`。已生成但未推送私有模板
-`kaggle_remote/kernel_smoke_rtdetr`，脚本语法编译通过；配置为 1 epoch、
-1024、HSI16、`rtdetr-l.pt`、单 checkpoint。
+完整测试：`110 passed`。私有模板 `kaggle_remote/kernel_smoke_rtdetr`
+脚本语法编译通过；配置为 1 epoch、1024、HSI16、`rtdetr-l.pt`、单
+checkpoint。RT-DETR 所需三个新/更新源码与 runner 已逐文件 SHA-256 同步到
+私有 `hsi-detection-code` staging，新 dataset version 已 `ready`，远端文件清单
+核验通过。官方权重未混入 CC0 staging，由 Kernel 联网从 Ultralytics Assets
+获取。
 
 ## 尚未证明与下一门禁
 
@@ -68,7 +71,7 @@ CPU，1 epoch，imgsz 64）：
 正式 fixed-val mAP、full-data 或 Public Score。下一步只能是独立 RT-DETR-L
 HSI16 Kaggle smoke（优先 batch 2/1），成功后再跑固定 2400/600；固定划分仍
 必须达到 `0.70443` 才能训练全量。它不得与 YOLO26m、DFL2.0 或 DFL2.5 的
-预测融合。当前私有 `hsi-detection-code` 远端版本尚未包含
-`hsi_detection.rtdetr.py`、`scripts.train_rtdetr_hsi.py`、更新后的预测入口和
-`rtdetr-l.pt`；必须先创建并等候一个新的私有 dataset version ready，才可推送
-上述 smoke Kernel。
+预测融合。独立私有 Kernel `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于
+2026-09-22 04:01（北京时间）推送，首次状态核验为 `RUNNING`。不要重启；完成
+后按环境、batch 降级、预训练迁移、训练、fresh reload、NPY 推理与 checker
+逐项判断 smoke 是否通过。
