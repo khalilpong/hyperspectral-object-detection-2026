@@ -1,12 +1,12 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 05:31（北京时间）
+> 最后更新：2026-09-22 06:05（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
 
-**排行榜显示的最高分是 0.65091，但它来自八模型融合，违反当前比赛的单模型规则，不能作为安全的最终成绩。** Kaggle 上传时只按 CSV 评分，不会自动检查训练/推理用了几个模型；资格风险会留到规则与获奖代码审核。当前已验证合规的 Public 最佳是 **0.63072**：单个 YOLO26m HSI16 checkpoint 的七尺度支持票推理（Kaggle ref `56392305`）。
+**本项目账号历史显示的最高分是 0.65091，但它来自八模型融合，违反当前比赛的单模型规则，不能作为安全的最终成绩。** Kaggle 上传时只按 CSV 评分，不会自动检查训练/推理用了几个模型；资格风险会留到规则与获奖代码审核。当前已验证合规的 Public 最佳是 **0.63072**：单个 YOLO26m HSI16 checkpoint 的七尺度支持票推理（Kaggle ref `56392305`）。2026-09-22 公开榜前三已升至 `0.68044 / 0.67659 / 0.67269`，但没有公开其方法或单模型血缘。
 
 - 官方 Rules 要求只能使用一个 detection model；主办方进一步明确：同一训练模型的 TTA/多尺度允许，不同模型的 voting、weighted fusion、post-NMS fusion 禁止。官方澄清：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/727863>。
 - `0.63917` 到 `0.65091` 的历史多模型成绩仅保留作研究记录；**禁止再提交任何 ensemble 文件，也不要把它们选为最终提交**。
@@ -24,6 +24,8 @@
 - `dfl=2.0` 与 `dfl=2.5` 两个彼此独立的单 YOLO26m fixed-split 私有作业均已完成并否决：最佳/最终分别为 `0.70165` 和 `0.70186`，虽比普通 e30 `0.70143` 高 `+0.00022/+0.00043`，但仍比 `0.70443` 门禁低 `0.00278/0.00257`；不跑对应 full-data、不生成正式候选、不提交，且绝不融合二者。
 - RT-DETR-L HSI16 后备 vertical slice 与远程 smoke 都已通过：私有 `zephyrpong/hsi-rtdetr-l-smoke` version 1 于 04:29 完成，单 T4、batch 2、峰值约 7.4 GiB，官方预训练迁移 `940/941` 项，RGB HGStem 显式扩到 16 通道；1 epoch、checkpoint fresh reload、1000 张 NPY 推理和 checker 全链成功。独立 fixed 2400/600 私有作业 `zephyrpong/hsi-rtdetr-l-ablation` version 1 已于 04:43 推送，04:44 核验为 `RUNNING`；必须达到 `0.70443` 才能跑 full-data。这仍不是正式候选或 Public 成绩。
 - YOLO26m `degrees=5` fixed-split 单变量作业已启动：代码与远程生成器共 `122` 项测试通过，真实 RT-DETR-L 构造也验证了后备 `num_denoising=200` 控制确实落在 decoder；私有代码数据集新版本 `ready`。`zephyrpong/hsi-yolo26m-deg5-ablation` version 1 于 05:29 推送并实时核验为 `RUNNING`。该作业保持普通 HSI16、2400/600、30 epochs、1024、batch 8 fallback、seed 2026、`scale=0.5`、`dfl=1.5`，唯一训练变量为 random-affine `degrees 0→5`；仍须达到 `0.70443` 才能跑 full-data，无 Competition Submit。
+- Phase 2/ranking-set 风险已于 06:00 用 Kaggle CLI 完整枚举 36 页官方文件清单：当前仍恰好 7,003 项（`data_train` 6,000、`data_test` 1,000、另外 3 个根文件），没有 ranking 路径或 2026-08-22 之后的新文件；现有 1,000-test 契约仍正确，但 ranking set 真正发布后必须重新核验。
+- 公开 `YOLO11m + [13,8,5]` Notebook 显示的 `0.7394` 已证实存在严重重复泄漏：其双 `**` glob 把 3,000 张训练 PNG 列成 6,000 条，实际 844 张 val 中有 788 张（93.36%）也在 train，test 也从 1,000 重复为 2,000 条。该分数不得与 fixed 2400/600 门禁比较，也不据此启动 full-data；完整证据见 `experiments/latest-public-strategy-research-20260922.md`。
 
 ## 👉 接手后第一件事
 
@@ -49,9 +51,10 @@
 
 1. 等待并核验正在运行的 RT-DETR-L HSI16 与 YOLO26m `degrees=5` 两个彼此独立的 fixed 2400/600 作业；不要重复推送。
 2. fixed 完成后用 `scripts/check_fixed_split_gate.py` 审计精确架构和变量：RT-DETR 要求 `--architecture rtdetr --expected-rtdetr-num-denoising 100`，YOLO 要求 `--architecture yolo --expected-dfl 1.5 --expected-degrees 5`；两者门禁均为 `0.70443`。低于门禁立即否决，达到门禁才允许生成该单 checkpoint 的 full-data 作业。
-3. `dfl=2.0/2.5`、zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
-4. 同规格新 seed 与 `cls_pw=0.5` 的先验都弱于当前 RT-DETR 架构门禁；不抢在 smoke 前启动。
-5. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
+3. 公开 Notebook 的 `0.7394` 是重复图泄漏，不复现其随机 split。`[13,8,5]` 仅保留为两个当前作业均失败后的低优先级 YOLO26m fixed 单变量；此前 `[5,8,13]` fixed 只有 `0.69726`，不得因公开泄漏分数直接跑 full-data。
+4. `dfl=2.0/2.5`、zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
+5. 同规格新 seed 与 `cls_pw=0.5` 的先验都弱于当前 RT-DETR 架构门禁；不抢在当前作业前启动。
+6. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
 > 提交额度每天 3 次，北京时间 08:00 重置；任何下一次 Submit 都必须先实时复核当日额度并取得用户单独确认。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
 
@@ -128,7 +131,8 @@ kaggle kernels status zephyrpong/<slug>
 | 比赛 | [Hyperspectral Object Detection Challenge 2026](https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026) |
 | 任务 | 高光谱图像目标检测，18 类，评分指标 mAP@[0.5:0.95] |
 | 截止 | **2026-09-24 16:00 UTC（北京时间 9 月 25 日 00:00）** |
-| 排行榜显示最高 | **0.65091**（八模型融合，提交编号 56378610；当前规则下不合规，不得作为最终提交） |
+| 当前公开榜前三（06:00 快照） | **0.68044 / 0.67659 / 0.67269**；方法与单模型血缘未公开 |
+| 本项目账号历史显示最高 | **0.65091**（八模型融合，提交编号 56378610；当前规则下不合规，不得作为最终提交） |
 | 已验证合规最佳 | **0.63072**（单 YOLO26m checkpoint + 七尺度支持票，提交编号 56392305；较上一合规 ref 56379896 提升 0.00006，较原始 ref 56303572 提升 0.00119） |
 | 历史显示排名 | 第 19（09-20 以不合规 ensemble 计，仅作页面快照，不代表安全名次） |
 | 提交额度 | **每天 3 次**（09-18 实测：第 4 次报 400 Bad Request），**UTC 零点重置（北京时间 08:00）**；Kaggle 保留历史最佳，提交差的不会掉排名 |
