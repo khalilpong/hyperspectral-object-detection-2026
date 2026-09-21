@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 06:14（北京时间）
+> 最后更新：2026-09-22 06:40（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -27,6 +27,7 @@
 - Phase 2/ranking-set 风险已于 06:00 用 Kaggle CLI 完整枚举 36 页官方文件清单：当前仍恰好 7,003 项（`data_train` 6,000、`data_test` 1,000、另外 3 个根文件），没有 ranking 路径或 2026-08-22 之后的新文件；现有 1,000-test 契约仍正确，但 ranking set 真正发布后必须重新核验。
 - 公开 `YOLO11m + [13,8,5]` Notebook 显示的 `0.7394` 已证实存在严重重复泄漏：其双 `**` glob 把 3,000 张训练 PNG 列成 6,000 条，实际 844 张 val 中有 788 张（93.36%）也在 train，test 也从 1,000 重复为 2,000 条。该分数不得与 fixed 2400/600 门禁比较，也不据此启动 full-data；完整证据见 `experiments/latest-public-strategy-research-20260922.md`。
 - `[13,8,5]` 伪 RGB 后备 fixed 实验已预注册并生成独立私有本地包 `kernel_ablation_prgb1385`；全仓 `123 passed`，生成 runner 与主 runner 只差预期 CONFIG。该包**未上传、未运行**，只有当前两个作业审计后仍值得投入时才考虑推送，门禁仍为 `0.70443`。
+- RT-DETR-L 的 `zero` 额外通道初始化也已预注册为独立 fixed 单变量后备：私有本地包 `kernel_ablation_rtdetr_xczero`、远端 slug `zephyrpong/hsi-rtdetr-l-xczero-ablation`，精确 CONFIG 已检查且全仓 `123 passed`；它**未上传、未运行**。只有当前 random-extra-channel RT-DETR fixed 门禁失败时才允许推送一次，YOLO26m zero-init 的既有负结果不能替代这项不同架构的测量。
 
 ## 👉 接手后第一件事
 
@@ -52,10 +53,11 @@
 
 1. 等待并核验正在运行的 RT-DETR-L HSI16 与 YOLO26m `degrees=5` 两个彼此独立的 fixed 2400/600 作业；不要重复推送。
 2. fixed 完成后用 `scripts/check_fixed_split_gate.py` 审计精确架构和变量：RT-DETR 要求 `--architecture rtdetr --expected-rtdetr-num-denoising 100`，YOLO 要求 `--architecture yolo --expected-dfl 1.5 --expected-degrees 5`；两者门禁均为 `0.70443`。低于门禁立即否决，达到门禁才允许生成该单 checkpoint 的 full-data 作业。
-3. 公开 Notebook 的 `0.7394` 是重复图泄漏，不复现其随机 split。`[13,8,5]` 仅保留为两个当前作业均失败后的低优先级 YOLO26m fixed 单变量；独立私有包已在本地生成但未推送，此前 `[5,8,13]` fixed 只有 `0.69726`，不得因公开泄漏分数直接跑 full-data。
-4. `dfl=2.0/2.5`、zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
-5. 同规格新 seed 与 `cls_pw=0.5` 的先验都弱于当前 RT-DETR 架构门禁；不抢在当前作业前启动。
-6. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
+3. 公开 Notebook 的 `0.7394` 是重复图泄漏，不复现其随机 split。若 degrees=5 门禁失败且远端有空槽，可只推送一次已预注册的 `[13,8,5]` YOLO26m fixed 单变量；此前 `[5,8,13]` fixed 只有 `0.69726`，不得因公开泄漏分数直接跑 full-data。
+4. 若 random-extra-channel RT-DETR fixed 门禁失败，可只推送一次已预注册的 RT-DETR `zero` extra-channel fixed 单变量；若 random 通过则不运行 zero。它与已否决的 YOLO26m zero-init 不是同一架构实验。
+5. `dfl=2.0/2.5`、YOLO26m zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
+6. 同规格新 seed 与 `cls_pw=0.5` 的先验都弱于当前 RT-DETR 架构门禁；不抢在当前作业前启动。
+7. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
 > 提交额度每天 3 次，北京时间 08:00 重置；任何下一次 Submit 都必须先实时复核当日额度并取得用户单独确认。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
 
