@@ -64,10 +64,10 @@ from pathlib import Path
 # ============================== 默认配置 ==============================
 # 由 make_kernel.py 生成 Kaggle Notebook 时替换这一块；云服务器上用环境变量覆盖。
 CONFIG = {
-    "MODE": "smoke",
+    "MODE": "ablation",
     "MODEL": "yolo26m.pt",
-    "EPOCHS": 1,
-    "RUN_NAME": "kaggle_smoke_m1024",
+    "EPOCHS": 30,
+    "RUN_NAME": "kaggle_ablation_yolo26m_scale030_e30",
     "ATTEMPTS": "8:2,6:2,4:2,4:0",
     "MULTISCALE": 0,
     "DATA": "hsi16",
@@ -77,7 +77,7 @@ CONFIG = {
     "LOWER_PERCENTILE": 0.5,
     "UPPER_PERCENTILE": 99.5,
     "CLS_PW": 0.0,
-    "SCALE": 0.5,
+    "SCALE": 0.3,
     "PHASE_TARGET_LONG_EDGE": 1024,
     "OBJECT_CROPS": 0,
     "TILE_INFERENCE": 0,
