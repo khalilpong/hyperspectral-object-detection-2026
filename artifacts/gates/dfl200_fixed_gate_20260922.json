@@ -1,0 +1,28 @@
+{
+  "contract": {
+    "single_model": true,
+    "fixed_split": "fixed_2400_train_600_val",
+    "expected_dfl": 2.0,
+    "gate": 0.70443
+  },
+  "run_name": "kaggle_ablation_yolo26m_dfl200_e30",
+  "best_epoch": 30,
+  "best_map50_95": 0.70165,
+  "best_map50": 0.95782,
+  "final_map50_95": 0.70165,
+  "delta_vs_baseline_0_70143": 0.00021999999999999797,
+  "margin_vs_gate": -0.0027800000000000047,
+  "passes_full_data_gate": false,
+  "decision": "reject_no_full_data",
+  "training_attempt": {
+    "t": 6999.4,
+    "returncode": 0,
+    "sec": 6658,
+    "cuda_oom": false,
+    "shm_error": false
+  },
+  "hashes": {
+    "status_sha256": "8211C6FB02E54B171080643C61C6539BD5814F9CEF42C69D0DBA5D278AAF0B05",
+    "results_sha256": "72637421B4C2DFBE1F066950A9561337011DBC7F0722432E60ACCE193D9CE37B"
+  }
+}
