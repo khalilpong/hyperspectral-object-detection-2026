@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 04:45（北京时间）
+> 最后更新：2026-09-22 05:31（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -23,6 +23,7 @@
 - 同 checkpoint 七尺度来源消融已完成并否决：七项 leave-one-out、中心 3/5 尺度和两组固定对称权重共 11 个候选均低于 `0.70570818` control；最好是删除 `1216`，仍低 `0.00044541`。保留全部七尺度统一权重，不生成或提交新候选。
 - `dfl=2.0` 与 `dfl=2.5` 两个彼此独立的单 YOLO26m fixed-split 私有作业均已完成并否决：最佳/最终分别为 `0.70165` 和 `0.70186`，虽比普通 e30 `0.70143` 高 `+0.00022/+0.00043`，但仍比 `0.70443` 门禁低 `0.00278/0.00257`；不跑对应 full-data、不生成正式候选、不提交，且绝不融合二者。
 - RT-DETR-L HSI16 后备 vertical slice 与远程 smoke 都已通过：私有 `zephyrpong/hsi-rtdetr-l-smoke` version 1 于 04:29 完成，单 T4、batch 2、峰值约 7.4 GiB，官方预训练迁移 `940/941` 项，RGB HGStem 显式扩到 16 通道；1 epoch、checkpoint fresh reload、1000 张 NPY 推理和 checker 全链成功。独立 fixed 2400/600 私有作业 `zephyrpong/hsi-rtdetr-l-ablation` version 1 已于 04:43 推送，04:44 核验为 `RUNNING`；必须达到 `0.70443` 才能跑 full-data。这仍不是正式候选或 Public 成绩。
+- YOLO26m `degrees=5` fixed-split 单变量作业已启动：代码与远程生成器共 `122` 项测试通过，真实 RT-DETR-L 构造也验证了后备 `num_denoising=200` 控制确实落在 decoder；私有代码数据集新版本 `ready`。`zephyrpong/hsi-yolo26m-deg5-ablation` version 1 于 05:29 推送并实时核验为 `RUNNING`。该作业保持普通 HSI16、2400/600、30 epochs、1024、batch 8 fallback、seed 2026、`scale=0.5`、`dfl=1.5`，唯一训练变量为 random-affine `degrees 0→5`；仍须达到 `0.70443` 才能跑 full-data，无 Competition Submit。
 
 ## 👉 接手后第一件事
 
@@ -32,7 +33,7 @@
 4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
 5. `dfl=2.0/2.5` 都已门禁失败；不要启动其 full-data，也不要上传两条作业各自产生的测试 CSV。
 6. 当前持续目标允许继续做合规的 Kaggle GPU 门禁实验；任何最终 Competition Submit 仍须在动作前单独确认，并复核单 checkpoint 血缘、Phase 2 数据覆盖与提交格式，绝不提交历史 ensemble。
-7. 当前只监控 `zephyrpong/hsi-rtdetr-l-ablation` version 1，04:44 状态为 `RUNNING`；不要重启或再推一份。完成后下载到独立目录，用架构感知门禁器核验配置、30 个 epoch、训练状态与哈希。fixed 最佳 mAP50-95 必须达到 `0.70443` 才能跑 full-data，且绝不能与 YOLO/其他 RT-DETR checkpoint 融合。
+7. 当前监控 `zephyrpong/hsi-rtdetr-l-ablation` version 1 与 `zephyrpong/hsi-yolo26m-deg5-ablation` version 1；两者均已实时核验为 `RUNNING`，不要重启或重复推送。完成后分别下载到独立目录，用架构感知门禁器核验精确变量、30 个 epoch、训练状态与哈希。fixed 最佳 mAP50-95 必须达到 `0.70443` 才能跑对应 full-data，且两个 checkpoint 绝不能融合。
 
 ### 成绩与合规状态
 
@@ -46,8 +47,8 @@
 
 ### 下一步可以试的（按优先级）
 
-1. 等待并核验正在运行的 RT-DETR-L HSI16 fixed 2400/600 作业；不要重复推送。
-2. fixed 完成后用 `scripts/check_fixed_split_gate.py --architecture rtdetr --gate 0.70443` 审计；低于门禁立即否决，达到门禁才允许生成单 checkpoint full-data 作业。
+1. 等待并核验正在运行的 RT-DETR-L HSI16 与 YOLO26m `degrees=5` 两个彼此独立的 fixed 2400/600 作业；不要重复推送。
+2. fixed 完成后用 `scripts/check_fixed_split_gate.py` 审计精确架构和变量：RT-DETR 要求 `--architecture rtdetr --expected-rtdetr-num-denoising 100`，YOLO 要求 `--architecture yolo --expected-dfl 1.5 --expected-degrees 5`；两者门禁均为 `0.70443`。低于门禁立即否决，达到门禁才允许生成该单 checkpoint 的 full-data 作业。
 3. `dfl=2.0/2.5`、zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
 4. 同规格新 seed 与 `cls_pw=0.5` 的先验都弱于当前 RT-DETR 架构门禁；不抢在 smoke 前启动。
 5. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
@@ -116,6 +117,7 @@ kaggle kernels status zephyrpong/<slug>
 | `hsi-yolo26m-dfl200-ablation` / `dfl250-ablation` | 私有 Kernel 版本 1 均 `COMPLETE`；最佳/最终 `0.70165/0.70186`，均未过 `0.70443`；不跑 full-data、不提交 |
 | `hsi-rtdetr-l-smoke` | 私有 Kernel 版本 1 `COMPLETE`；单 T4 batch 2、1 epoch、1024、HSI16，预训练/16 通道迁移/训练/重载/NPY 推理/checker 全通过；仅是远程全链路门禁，不是 fixed-split 成绩 |
 | `hsi-rtdetr-l-ablation` | 私有 Kernel 版本 1 于 04:43 推送，04:44 为 `RUNNING`；单 RT-DETR-L checkpoint、fixed 2400/600、30 epoch、1024、batch `2→1` 降级；门槛 `0.70443`，无 Competition Submit |
+| `hsi-yolo26m-deg5-ablation` | 私有 Kernel 版本 1 于 05:29 推送并实时核验为 `RUNNING`；单 YOLO26m checkpoint、fixed 2400/600、30 epoch、1024、random-affine `degrees=5`，其余定位/增强参数保持普通基线；门槛 `0.70443`，无 Competition Submit |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 

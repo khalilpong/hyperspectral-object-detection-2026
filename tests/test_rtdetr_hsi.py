@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import torch
+import pytest
 from torch import nn
 
 from hsi_detection.rtdetr import (
+    RTDETR_DENOISING_METADATA_KEY,
     RTDETR_HSI_METADATA_KEY,
+    configure_rtdetr_num_denoising,
     rtdetr_input_conv,
     transfer_rtdetr_input_weights,
 )
@@ -22,6 +25,19 @@ class _Model(nn.Module):
         super().__init__()
         self.model = nn.ModuleList([_Stem(channels)])
         self.yaml: dict[str, object] = {"channels": channels}
+
+
+class _Decoder(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.num_denoising = 100
+
+
+class _DecoderModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.model = nn.ModuleList([nn.Identity(), _Decoder()])
+        self.yaml: dict[str, object] = {}
 
 
 def test_rtdetr_input_transfer_copies_rgb_and_keeps_random_extras() -> None:
@@ -47,3 +63,18 @@ def test_rtdetr_input_transfer_can_zero_extra_channels() -> None:
     transfer_rtdetr_input_weights(target, source, extra_channel_init="zero")
 
     assert torch.count_nonzero(rtdetr_input_conv(target).weight[:, 3:]) == 0
+
+
+def test_configure_rtdetr_num_denoising_updates_decoder_and_metadata() -> None:
+    model = _DecoderModel()
+
+    assert configure_rtdetr_num_denoising(model, 200) == 200
+
+    assert model.model[-1].num_denoising == 200
+    assert model.yaml[RTDETR_DENOISING_METADATA_KEY] == 200
+
+
+def test_configure_rtdetr_num_denoising_rejects_invalid_value() -> None:
+    for invalid in (0, -1, True):
+        with pytest.raises(ValueError):
+            configure_rtdetr_num_denoising(_DecoderModel(), invalid)

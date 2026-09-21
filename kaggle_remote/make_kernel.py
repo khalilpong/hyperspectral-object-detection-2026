@@ -74,6 +74,14 @@ def _validate_scale(value: float) -> None:
         raise ValueError(f"random-affine scale 必须满足 0.0 <= value <= 1.0，收到 {value:g}")
 
 
+def _validate_degrees(value: float) -> None:
+    if not math.isfinite(value) or not 0.0 <= value <= 180.0:
+        raise ValueError(
+            "random-affine degrees 必须满足 0.0 <= value <= 180.0，"
+            f"收到 {value:g}"
+        )
+
+
 def _validate_dfl(value: float) -> None:
     if not math.isfinite(value) or value < 0.0:
         raise ValueError(f"dfl loss gain 必须是有限非负数，收到 {value:g}")
@@ -124,8 +132,12 @@ def main() -> None:
                         help="分类 BCE 的类别频次权重幂；0.0 关闭，1.0 为完整逆频率")
     parser.add_argument("--scale", type=float, default=0.5,
                         help="训练 random-affine scale；0.5 为 Ultralytics 基线，区别于推理 multiscale")
+    parser.add_argument("--degrees", type=float, default=0.0,
+                        help="YOLO 训练 random-affine 最大绝对旋转角；0.0 为基线")
     parser.add_argument("--dfl", type=float, default=1.5,
                         help="Distribution Focal Loss gain；1.5 为 Ultralytics 基线")
+    parser.add_argument("--rtdetr-num-denoising", type=int, default=100,
+                        help="RT-DETR 训练 denoising query 数；100 为 Ultralytics 基线")
     parser.add_argument("--fusion-iou", type=float, default=0.70,
                         help="同一 checkpoint 多尺度 box voting IoU；仅 --multiscale 生效")
     parser.add_argument("--support-gain", type=float, default=0.0,
@@ -153,6 +165,7 @@ def main() -> None:
         _validate_percentiles(args.lower_percentile, args.upper_percentile)
         _validate_cls_pw(args.cls_pw)
         _validate_scale(args.scale)
+        _validate_degrees(args.degrees)
         _validate_dfl(args.dfl)
         _validate_inference_fusion(args.fusion_iou, args.support_gain)
     except ValueError as error:
@@ -165,6 +178,8 @@ def main() -> None:
         parser.error("--spectral-stem 与 --extra-channel-init zero 互斥")
     if args.phase_target_long_edge <= 0:
         parser.error("--phase-target-long-edge 必须是正整数")
+    if args.rtdetr_num_denoising <= 0:
+        parser.error("--rtdetr-num-denoising 必须是正整数")
     if args.data != "hsi16_phase" and args.phase_target_long_edge != 1024:
         parser.error("--phase-target-long-edge 只适用于 --data hsi16_phase")
     if args.data == "hsi16_phase" and args.extra_channel_init != "random":
@@ -180,10 +195,14 @@ def main() -> None:
             parser.error("RT-DETR 不支持 YOLO 专属的 --cls-pw")
         if args.scale != 0.5:
             parser.error("RT-DETR 远程路径尚未暴露 random-affine --scale")
+        if args.degrees != 0.0:
+            parser.error("RT-DETR 远程路径不使用 YOLO --degrees")
         if args.dfl != 1.5:
             parser.error("RT-DETR 不使用 YOLO DFL gain；--dfl 必须保持默认 1.5")
         if args.object_crops or args.tile_inference:
             parser.error("RT-DETR smoke/fixed 路径暂不支持 object crops 或 tile inference")
+    elif args.rtdetr_num_denoising != 100:
+        parser.error("YOLO 路径不使用 --rtdetr-num-denoising；必须保持默认 100")
 
     model_tag = args.model.removesuffix(".pt")
     architecture_tag = "_rtdetr" if args.architecture == "rtdetr" else ""
@@ -207,10 +226,27 @@ def main() -> None:
     stem_tag = "_stem" if args.spectral_stem else ""
     cls_pw_tag = "" if args.cls_pw == 0.0 else f"_clspw{_fraction_tag(args.cls_pw)}"
     scale_tag = "" if args.scale == 0.5 else f"_scale{_fraction_tag(args.scale)}"
+    degrees_tag = "" if args.degrees == 0.0 else f"_deg{_compact_decimal_tag(args.degrees)}"
     dfl_tag = "" if args.dfl == 1.5 else f"_dfl{_fraction_tag(args.dfl)}"
+    denoising_tag = (
+        ""
+        if args.rtdetr_num_denoising == 100
+        else f"_nd{args.rtdetr_num_denoising}"
+    )
     crop_tag = "_crop" if args.object_crops else ""
     tile_tag = "_tile" if args.tile_inference else ""
-    variant_tag = data_tag + init_tag + stem_tag + cls_pw_tag + scale_tag + dfl_tag + crop_tag + tile_tag
+    variant_tag = (
+        data_tag
+        + init_tag
+        + stem_tag
+        + cls_pw_tag
+        + scale_tag
+        + degrees_tag
+        + dfl_tag
+        + denoising_tag
+        + crop_tag
+        + tile_tag
+    )
     inference_tag = ""
     if args.multiscale:
         if args.fusion_iou != 0.70:
@@ -238,7 +274,9 @@ def main() -> None:
         f'    "UPPER_PERCENTILE": {args.upper_percentile!r},\n'
         f'    "CLS_PW": {args.cls_pw!r},\n'
         f'    "SCALE": {args.scale!r},\n'
+        f'    "DEGREES": {args.degrees!r},\n'
         f'    "DFL": {args.dfl!r},\n'
+        f'    "RTDETR_NUM_DENOISING": {args.rtdetr_num_denoising},\n'
         f'    "FUSION_IOU": {args.fusion_iou!r},\n'
         f'    "SUPPORT_GAIN": {args.support_gain!r},\n'
         f'    "PHASE_TARGET_LONG_EDGE": {args.phase_target_long_edge},\n'
@@ -286,7 +324,9 @@ def main() -> None:
           f"spectral_stem={args.spectral_stem} "
           f"cls_pw={args.cls_pw:g} "
           f"scale={args.scale:g} "
+          f"degrees={args.degrees:g} "
           f"dfl={args.dfl:g} "
+          f"rtdetr_num_denoising={args.rtdetr_num_denoising} "
           f"fusion_iou={args.fusion_iou:g} support_gain={args.support_gain:g} "
           f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "
           f"phase_target_long_edge={args.phase_target_long_edge} "

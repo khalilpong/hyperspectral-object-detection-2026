@@ -54,6 +54,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--close-mosaic", type=int)
     parser.add_argument("--scale", type=float)
     parser.add_argument(
+        "--degrees",
+        type=float,
+        help="Maximum absolute random-affine rotation in degrees.",
+    )
+    parser.add_argument(
         "--multi-scale",
         type=float,
         help=(
@@ -100,6 +105,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--cls-pw must satisfy 0.0 <= value <= 1.0")
     if args.dfl is not None and (not math.isfinite(args.dfl) or args.dfl < 0.0):
         parser.error("--dfl must be finite and non-negative")
+    if args.degrees is not None and (
+        not math.isfinite(args.degrees) or not 0.0 <= args.degrees <= 180.0
+    ):
+        parser.error("--degrees must be finite and satisfy 0.0 <= value <= 180.0")
 
     if args.resume:
         unsupported = [
@@ -123,6 +132,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 "mosaic",
                 "close_mosaic",
                 "scale",
+                "degrees",
                 "multi_scale",
                 "extra_channel_init",
             )
@@ -187,6 +197,7 @@ def build_train_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "mosaic",
         "close_mosaic",
         "scale",
+        "degrees",
         "multi_scale",
     ):
         value = getattr(args, option)

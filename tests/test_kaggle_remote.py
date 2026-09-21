@@ -63,6 +63,13 @@ def test_percentile_validation_and_stable_tags() -> None:
         module._validate_scale(-0.01)
     with pytest.raises(ValueError):
         module._validate_scale(1.01)
+    module._validate_degrees(0.0)
+    module._validate_degrees(5.0)
+    module._validate_degrees(180.0)
+    with pytest.raises(ValueError):
+        module._validate_degrees(-0.01)
+    with pytest.raises(ValueError):
+        module._validate_degrees(180.01)
     module._validate_dfl(0.0)
     module._validate_dfl(1.5)
     module._validate_dfl(2.0)
@@ -371,6 +378,40 @@ def test_make_kernel_renders_isolated_dfl_variant(tmp_path: Path, monkeypatch) -
     ]
 
 
+def test_make_kernel_renders_isolated_degrees_variant(tmp_path: Path, monkeypatch) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--degrees",
+            "5",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_deg5"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_deg5_e30"' in rendered
+    assert '"DEGREES": 5.0' in rendered
+    assert '"SCALE": 0.5' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-deg5-ablation"
+    assert metadata["is_private"] is True
+
+
 def test_make_kernel_renders_single_checkpoint_supported_multiscale_full_candidate(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -472,9 +513,11 @@ def test_remote_runner_builds_rtdetr_command_without_yolo_only_gains(
     assert command[1] == "scripts/train_rtdetr_hsi.py"
     assert command[command.index("--batch") + 1] == "2"
     assert command[command.index("--extra-channel-init") + 1] == "random"
+    assert command[command.index("--num-denoising") + 1] == "100"
     assert "--dfl" not in command
     assert "--cls-pw" not in command
     assert "--scale" not in command
+    assert "--degrees" not in command
     assert "--no-val" not in command
 
 
@@ -485,6 +528,7 @@ def test_remote_runner_builds_rtdetr_command_without_yolo_only_gains(
         ["--cls-pw", "0.25"],
         ["--spectral-stem"],
         ["--scale", "0.3"],
+        ["--degrees", "5"],
         ["--data", "hsi16_phase"],
         ["--object-crops"],
         ["--tile-inference"],
@@ -515,6 +559,42 @@ def test_make_kernel_rejects_yolo_only_variants_for_rtdetr(
 
     with pytest.raises(SystemExit):
         module.main()
+
+
+def test_make_kernel_renders_rtdetr_num_denoising_variant(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--architecture",
+            "rtdetr",
+            "--epochs",
+            "30",
+            "--rtdetr-num-denoising",
+            "200",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_rtdetr_nd200"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_rtdetr-l_nd200_e30"' in rendered
+    assert '"RTDETR_NUM_DENOISING": 200' in rendered
+    assert '"DEGREES": 0.0' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-rtdetr-l-nd200-ablation"
+    assert metadata["is_private"] is True
 
 
 def test_make_kernel_rejects_conflicting_spectral_initialization(

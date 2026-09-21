@@ -129,6 +129,10 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 
 随机仿射尺度消融通过 `--scale` 单变量控制，并与训练期 `--multi-scale` 明确区分：前者改变每个样本的 random-affine 缩放范围，后者改变训练 batch 的输入尺寸。默认 `scale=0.5`；`hsi-yolo26m-scale030-ablation` 只把它改为 `0.3`，普通 HSI16、固定 2400/600 split、seed 2026、batch 8、workers 2、device 0、30 epochs 和 `cls_pw=0.0` 均保持不变。该运行最佳/最终 `0.69992 < 0.70443`，已否决，不进入 full-data 或比赛 Submit。
 
+随机仿射旋转消融通过 `--degrees` 单变量控制。默认 `degrees=0`；`hsi-yolo26m-deg5-ablation` 只把它改为 `5`，普通 HSI16、固定 2400/600 split、seed 2026、`scale=0.5`、`dfl=1.5`、`cls_pw=0.0` 与其余训练合同保持不变。门禁器必须同时给出 `--architecture yolo --expected-dfl 1.5 --expected-degrees 5 --gate 0.70443`，以排除远端配置漂移。
+
+RT-DETR denoising-query 消融通过 `--rtdetr-num-denoising` 控制，默认 `100`。非默认值只允许 RT-DETR 路径，YOLO 路径会拒绝；训练入口在构建并加载目标模型后修改 decoder 的 `num_denoising`，同时写入模型 YAML metadata。门禁器用 `--expected-rtdetr-num-denoising` 核验精确值。该能力目前只是后备实验接口，不代表 `nd=200` 已经训练或有效。
+
 ## 踩过的坑
 
 1. **Kaggle 命令行在 Windows 上不能用带 `/` 的相对路径**。

@@ -23,10 +23,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--name", default="rtdetr_l_hsi16_fixed")
     parser.add_argument("--project", type=Path, default=Path("runs"))
     parser.add_argument("--extra-channel-init", choices=("random", "zero"), default="random")
+    parser.add_argument(
+        "--num-denoising",
+        type=int,
+        default=100,
+        help="Number of RT-DETR contrastive denoising queries used during training.",
+    )
     parser.add_argument("--val", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--plots", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args(argv)
-    for name in ("epochs", "imgsz", "batch"):
+    for name in ("epochs", "imgsz", "batch", "num_denoising"):
         if getattr(args, name) <= 0:
             parser.error(f"--{name} must be positive")
     if args.workers < 0:
@@ -65,7 +71,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     trainer_type = type(
         "ConfiguredHSIRTDETRTrainer",
         (HSIRTDETRTrainer,),
-        {"extra_channel_init": args.extra_channel_init},
+        {
+            "extra_channel_init": args.extra_channel_init,
+            "num_denoising": args.num_denoising,
+        },
     )
     model = RTDETR(args.model)
     model.train(trainer=trainer_type, **build_train_kwargs(args))

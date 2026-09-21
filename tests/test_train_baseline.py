@@ -29,6 +29,7 @@ def test_new_run_keeps_documented_defaults() -> None:
     assert kwargs["resume"] is False
     assert "cls_pw" not in kwargs
     assert "dfl" not in kwargs
+    assert "degrees" not in kwargs
 
 
 def test_resume_does_not_apply_fresh_run_defaults() -> None:
@@ -100,6 +101,8 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
             "0",
             "--scale",
             "0.75",
+            "--degrees",
+            "5",
             "--multi-scale",
             "0.25",
         ]
@@ -120,6 +123,7 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
     assert kwargs["mosaic"] == 0.0
     assert kwargs["close_mosaic"] == 0
     assert kwargs["scale"] == 0.75
+    assert kwargs["degrees"] == 5.0
     assert kwargs["multi_scale"] == 0.25
 
 
@@ -160,6 +164,19 @@ def test_dfl_validates_range_and_cannot_override_resume() -> None:
     with pytest.raises(SystemExit):
         train_baseline.parse_args(
             ["--resume", "runs/example/weights/last.pt", "--dfl", "2.0"]
+        )
+
+
+def test_degrees_validates_range_and_cannot_override_resume() -> None:
+    assert train_baseline.parse_args(["--degrees", "5"]).degrees == 5.0
+
+    for invalid in ("-0.01", "180.01", "nan", "inf"):
+        with pytest.raises(SystemExit):
+            train_baseline.parse_args(["--degrees", invalid])
+
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            ["--resume", "runs/example/weights/last.pt", "--degrees", "5"]
         )
 
 

@@ -25,12 +25,26 @@ def test_rtdetr_training_defaults_disable_amp_and_determinism(tmp_path: Path) ->
     assert kwargs["amp"] is False
     assert kwargs["deterministic"] is False
     assert kwargs["data"] == str(data.resolve())
+    assert args.num_denoising == 100
 
 
 @pytest.mark.parametrize(
     "arguments",
-    (["--epochs", "0"], ["--imgsz", "0"], ["--batch", "0"], ["--workers", "-1"]),
+    (
+        ["--epochs", "0"],
+        ["--imgsz", "0"],
+        ["--batch", "0"],
+        ["--workers", "-1"],
+        ["--num-denoising", "0"],
+    ),
 )
 def test_rtdetr_training_rejects_invalid_sizes(arguments: list[str]) -> None:
     with pytest.raises(SystemExit):
         train_rtdetr_hsi.parse_args(["--data", "dataset.yaml", *arguments])
+
+
+def test_rtdetr_training_accepts_explicit_num_denoising() -> None:
+    args = train_rtdetr_hsi.parse_args(
+        ["--data", "dataset.yaml", "--num-denoising", "200"]
+    )
+    assert args.num_denoising == 200

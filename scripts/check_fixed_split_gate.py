@@ -39,6 +39,8 @@ def audit_fixed_split(
     expected_architecture: str = "yolo",
     expected_model: str | None = None,
     expected_dfl: float | None = None,
+    expected_degrees: float = 0.0,
+    expected_rtdetr_num_denoising: int = 100,
     gate: float,
 ) -> dict[str, object]:
     if expected_architecture not in {"yolo", "rtdetr"}:
@@ -51,6 +53,14 @@ def audit_fixed_split(
         raise ValueError("YOLO fixed-split audit requires expected_dfl")
     if expected_architecture == "rtdetr" and expected_dfl is not None:
         raise ValueError("RT-DETR does not use the YOLO expected_dfl contract")
+    if not math.isfinite(expected_degrees) or not 0.0 <= expected_degrees <= 180.0:
+        raise ValueError("expected_degrees must be finite and within [0, 180]")
+    if expected_rtdetr_num_denoising <= 0:
+        raise ValueError("expected_rtdetr_num_denoising must be positive")
+    if expected_architecture == "rtdetr" and expected_degrees != 0.0:
+        raise ValueError("RT-DETR does not use the YOLO expected_degrees contract")
+    if expected_architecture == "yolo" and expected_rtdetr_num_denoising != 100:
+        raise ValueError("YOLO does not use the RT-DETR denoising-query contract")
 
     status = json.loads(status_path.read_text(encoding="utf-8"))
     if status.get("result") != "success":
@@ -59,6 +69,10 @@ def audit_fixed_split(
     config = status.get("config")
     if not isinstance(config, dict):
         raise ValueError("status.json is missing a config object")
+    # Runs created before these isolated controls were added omitted both keys;
+    # their effective Ultralytics defaults were degrees=0 and nd=100.
+    config.setdefault("DEGREES", 0.0)
+    config.setdefault("RTDETR_NUM_DENOISING", 100)
     observed_architecture = config.get("ARCHITECTURE", "yolo")
     if observed_architecture != expected_architecture:
         raise ValueError(
@@ -81,7 +95,9 @@ def audit_fixed_split(
             "UPPER_PERCENTILE": 99.5,
             "CLS_PW": 0.0,
             "SCALE": 0.5,
+            "DEGREES": expected_degrees,
             "DFL": 1.5 if expected_architecture == "rtdetr" else expected_dfl,
+            "RTDETR_NUM_DENOISING": expected_rtdetr_num_denoising,
             "PHASE_TARGET_LONG_EDGE": 1024,
             "OBJECT_CROPS": False,
             "TILE_INFERENCE": False,
@@ -139,6 +155,10 @@ def audit_fixed_split(
     }
     if expected_dfl is not None:
         contract["expected_dfl"] = expected_dfl
+    if expected_architecture == "yolo":
+        contract["expected_degrees"] = expected_degrees
+    else:
+        contract["expected_rtdetr_num_denoising"] = expected_rtdetr_num_denoising
     return {
         "contract": contract,
         "run_name": config.get("RUN_NAME"),
@@ -167,6 +187,8 @@ def main() -> None:
     )
     parser.add_argument("--model")
     parser.add_argument("--expected-dfl", type=float)
+    parser.add_argument("--expected-degrees", type=float, default=0.0)
+    parser.add_argument("--expected-rtdetr-num-denoising", type=int, default=100)
     parser.add_argument("--gate", type=float, default=0.70443)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -181,6 +203,8 @@ def main() -> None:
         expected_architecture=args.architecture,
         expected_model=args.model,
         expected_dfl=args.expected_dfl,
+        expected_degrees=args.expected_degrees,
+        expected_rtdetr_num_denoising=args.expected_rtdetr_num_denoising,
         gate=args.gate,
     )
     rendered = json.dumps(report, indent=2, ensure_ascii=False)

@@ -12,6 +12,7 @@ from ultralytics.utils.torch_utils import unwrap_model
 
 RTDETR_HSI_METADATA_KEY = "rtdetr_hsi_input_transfer"
 RTDETR_HSI_METADATA_VERSION = 1
+RTDETR_DENOISING_METADATA_KEY = "rtdetr_num_denoising"
 
 
 def rtdetr_input_conv(model: nn.Module) -> nn.Conv2d:
@@ -92,10 +93,46 @@ def transfer_rtdetr_input_weights(
     return metadata
 
 
+def configure_rtdetr_num_denoising(model: nn.Module, num_denoising: int) -> int:
+    """Set the RT-DETR decoder's training-only denoising query count.
+
+    ``num_denoising`` is a scalar decoder setting rather than a tensor in the
+    checkpoint state dict.  Set it on the newly constructed target model after
+    weight loading, and mirror it into the model YAML so remote audit artifacts
+    retain the exact experiment value.
+    """
+    if isinstance(num_denoising, bool) or not isinstance(num_denoising, int) or num_denoising <= 0:
+        raise ValueError("num_denoising must be a positive integer")
+
+    current: Any = unwrap_model(model)
+    decoder: nn.Module | None = None
+    for _ in range(2):
+        layers = getattr(current, "model", None)
+        if isinstance(layers, (nn.Sequential, nn.ModuleList)) and len(layers):
+            candidate = layers[-1]
+            if hasattr(candidate, "num_denoising"):
+                decoder = candidate
+                break
+        if isinstance(layers, nn.Module):
+            current = layers
+            continue
+        break
+    if decoder is None:
+        raise RuntimeError("Could not locate RT-DETR decoder num_denoising setting")
+
+    decoder.num_denoising = num_denoising
+    yaml = getattr(unwrap_model(model), "yaml", None)
+    if isinstance(yaml, dict):
+        yaml[RTDETR_DENOISING_METADATA_KEY] = num_denoising
+    LOGGER.info("Configured RT-DETR with %d denoising queries", num_denoising)
+    return num_denoising
+
+
 class HSIRTDETRTrainer(RTDETRTrainer):
     """RT-DETR trainer that preserves RGB stem transfer for HSI16 input."""
 
     extra_channel_init = "random"
+    num_denoising = 100
 
     def get_model(
         self,
@@ -125,4 +162,5 @@ class HSIRTDETRTrainer(RTDETRTrainer):
                 "Building %d-channel RT-DETR without pretrained weights; all input channels are random",
                 channels,
             )
+        configure_rtdetr_num_denoising(model, self.num_denoising)
         return model

@@ -16,6 +16,8 @@ def _write_run(
     best: float,
     architecture: str = "yolo",
     model: str = "yolo26m.pt",
+    degrees: float | None = None,
+    num_denoising: int | None = None,
 ) -> tuple[Path, Path]:
     status = {
         "config": {
@@ -48,6 +50,10 @@ def _write_run(
         },
         "result": "success",
     }
+    if degrees is not None:
+        status["config"]["DEGREES"] = degrees
+    if num_denoising is not None:
+        status["config"]["RTDETR_NUM_DENOISING"] = num_denoising
     status_path = tmp_path / "status.json"
     status_path.write_text(json.dumps(status), encoding="utf-8")
 
@@ -111,6 +117,32 @@ def test_audit_fixed_split_rejects_config_drift(tmp_path: Path) -> None:
         )
 
 
+def test_audit_fixed_split_checks_yolo_degrees_variant(tmp_path: Path) -> None:
+    status, results = _write_run(
+        tmp_path, dfl=1.5, best=0.705, degrees=5.0, num_denoising=100
+    )
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_dfl=1.5,
+        expected_degrees=5.0,
+        gate=0.70443,
+    )
+
+    assert report["contract"]["expected_degrees"] == 5.0
+    assert report["passes_full_data_gate"] is True
+
+    with pytest.raises(ValueError, match="config mismatch"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_dfl=1.5,
+            expected_degrees=3.0,
+            gate=0.70443,
+        )
+
+
 def test_audit_fixed_split_accepts_rtdetr_contract(tmp_path: Path) -> None:
     status, results = _write_run(
         tmp_path,
@@ -132,6 +164,40 @@ def test_audit_fixed_split_accepts_rtdetr_contract(tmp_path: Path) -> None:
     assert report["contract"]["model"] == "rtdetr-l.pt"
     assert "expected_dfl" not in report["contract"]
     assert report["passes_full_data_gate"] is True
+
+
+def test_audit_fixed_split_checks_rtdetr_denoising_variant(tmp_path: Path) -> None:
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        architecture="rtdetr",
+        model="rtdetr-l.pt",
+        degrees=0.0,
+        num_denoising=200,
+    )
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_architecture="rtdetr",
+        expected_model="rtdetr-l.pt",
+        expected_rtdetr_num_denoising=200,
+        gate=0.70443,
+    )
+
+    assert report["contract"]["expected_rtdetr_num_denoising"] == 200
+    assert report["passes_full_data_gate"] is True
+
+    with pytest.raises(ValueError, match="config mismatch"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_architecture="rtdetr",
+            expected_model="rtdetr-l.pt",
+            expected_rtdetr_num_denoising=100,
+            gate=0.70443,
+        )
 
 
 def test_audit_fixed_split_rejects_yolo_dfl_contract_for_rtdetr(

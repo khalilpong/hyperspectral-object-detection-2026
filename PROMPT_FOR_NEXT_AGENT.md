@@ -34,15 +34,16 @@
 - `cls_pw=0.25` 私有 fixed 2400/600 消融已完成并否决：唯一训练变量为分类频次权重；最佳 epoch 27 为 `0.69863`，最终 epoch 30 为 `0.69862`，低于普通同规格 e30 `0.70143` 和门槛 `0.70443`。36,784 条测试检测仅通过本地 checker，无比赛 Submit/Public；不要启动其 full-data 训练或上传该 CSV。
 - random-affine `scale=0.3` 私有 fixed 2400/600 消融已完成并否决：已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于门槛 `0.70443`。31,848 条测试检测仅通过本地 checker，无比赛 Submit/Public；不要启动其 full-data 训练或上传该 CSV。
 - `dfl=2.0/2.5` 两个独立单模型 fixed 2400/600 作业均已完成并否决：最佳/最终 `0.70165/0.70186`，虽略高于普通 e30 `0.70143`，但仍低于 `0.70443` 门禁；不要启动对应 full-data 或上传其测试 CSV，二者绝不能融合。
-- RT-DETR-L HSI16 本地全链 vertical slice、远程架构分支和 `112` 项测试均已通过；私有代码数据集新版本已 `ready`。独立 `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 04:29 `COMPLETE`：单 T4 batch 2、官方预训练和 16 通道迁移、1 epoch、重载、NPY 推理与 checker 全通过。fixed 2400/600 的 `zephyrpong/hsi-rtdetr-l-ablation` version 1 已于 04:43 推送，04:44 状态为 `RUNNING`；仍不是正式候选或 Public 成绩。
+- RT-DETR-L HSI16 本地全链 vertical slice、远程架构分支和当前全仓 `122` 项测试均已通过；私有代码数据集新版本已 `ready`。独立 `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 04:29 `COMPLETE`：单 T4 batch 2、官方预训练和 16 通道迁移、1 epoch、重载、NPY 推理与 checker 全通过。fixed 2400/600 的 `zephyrpong/hsi-rtdetr-l-ablation` version 1 已于 04:43 推送，04:44 状态为 `RUNNING`；仍不是正式候选或 Public 成绩。
+- YOLO26m 小角度旋转单变量已进入 fixed 门禁：训练脚本、远程 runner、生成器和门禁器均已支持并验证 `degrees`，全仓 `122` 项测试通过；私有 `zephyrpong/hsi-yolo26m-deg5-ablation` version 1 于 05:29 推送并实时核验为 `RUNNING`。普通 HSI16、fixed 2400/600、30 epochs、1024、batch 8 fallback、seed 2026、`scale=0.5`、`dfl=1.5` 不变，唯一变量为 `degrees 0→5`；门槛仍为 `0.70443`，无 Competition Submit。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
 - Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 使用约 3.1 小时，phase-aware fixed split 使用约 2.5 小时，`cls_pw=0.25` fixed split 使用约 2.29 小时，`scale=0.3` fixed split 使用约 2.06 小时。启动任何新训练前先实时复核余额。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. 只监控当前 `hsi-rtdetr-l-ablation` version 1，不要重启或再推一份；完成后下载到独立目录，用架构感知门禁器核验配置、30 个 epoch、训练状态和哈希。
-2. fixed 仍按 `0.70443` 门禁；低于门禁立即否决，达到门禁才允许生成单 checkpoint full-data 作业，且绝不能与 YOLO 或另一个 checkpoint 融合。
+1. 只监控当前 `hsi-rtdetr-l-ablation` version 1 和 `hsi-yolo26m-deg5-ablation` version 1，不要重启或重复推送；完成后分别下载到独立目录，用架构感知门禁器核验精确配置、30 个 epoch、训练状态和哈希。
+2. 两个 fixed 均按 `0.70443` 门禁；RT-DETR 审计 `num_denoising=100`，YOLO 审计 `dfl=1.5/degrees=5`。低于门禁立即否决，达到门禁才允许生成对应单 checkpoint full-data 作业，且两个 checkpoint 绝不能融合。
 3. `dfl=2.0/2.5`、scale、`cls_pw`、phase-aware、e45、horizontal-flip、zero-init、object-crop、SpectralStem、tile TTA、尺度来源/权重和继续细扫后处理均已否决，不重复投入。
 4. 对任何新候选重新核对哈希、格式和额度；最终 Competition Submit 前让我确认。
 
