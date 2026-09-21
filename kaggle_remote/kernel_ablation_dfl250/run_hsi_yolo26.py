@@ -22,11 +22,9 @@
   HSI_SPECTRAL_STEM  1 = 可学习的 16→3 光谱投影后接完整预训练 YOLO，0 = 原始首层扩展
   HSI_LOWER_PERCENTILE  HSI16 共享缩放下百分位，默认 0.5
   HSI_UPPER_PERCENTILE  HSI16 共享缩放上百分位，默认 99.5
-  HSI_CLS_PW        分类 BCE 的类别频次权重幂，0.0 关闭，范围 0.0~1.0
-  HSI_DFL           Distribution Focal Loss gain，默认 1.5
-  HSI_FUSION_IOU    同一 checkpoint 多尺度 box voting IoU，默认 0.70
-  HSI_SUPPORT_GAIN  同一 checkpoint 多尺度支持票加成，默认 0.0
-  HSI_PHASE_TARGET_LONG_EDGE  相位感知 HSI16 重建长边，默认 1024
+	  HSI_CLS_PW        分类 BCE 的类别频次权重幂，0.0 关闭，范围 0.0~1.0
+	  HSI_DFL           Distribution Focal Loss gain，默认 1.5
+	  HSI_PHASE_TARGET_LONG_EDGE  相位感知 HSI16 重建长边，默认 1024
   HSI_OBJECT_CROPS  1 = 训练集增加一份 128x256 对象感知 crop，0 = 不增加
   HSI_TILE_INFERENCE  1 = 同一 checkpoint 的全图多尺度 + 切片推理，0 = 仅原推理
   HSI_CODE_ROOT    代码目录（含 scripts.*.py 平铺文件），不设则在输入目录里自动查找
@@ -68,10 +66,10 @@ from pathlib import Path
 # ============================== 默认配置 ==============================
 # 由 make_kernel.py 生成 Kaggle Notebook 时替换这一块；云服务器上用环境变量覆盖。
 CONFIG = {
-    "MODE": "smoke",
+    "MODE": "ablation",
     "MODEL": "yolo26m.pt",
-    "EPOCHS": 1,
-    "RUN_NAME": "kaggle_smoke_m1024",
+    "EPOCHS": 30,
+    "RUN_NAME": "kaggle_ablation_yolo26m_dfl250_e30",
     "ATTEMPTS": "8:2,6:2,4:2,4:0",
     "MULTISCALE": 0,
     "DATA": "hsi16",
@@ -82,9 +80,7 @@ CONFIG = {
     "UPPER_PERCENTILE": 99.5,
     "CLS_PW": 0.0,
     "SCALE": 0.5,
-    "DFL": 1.5,
-    "FUSION_IOU": 0.70,
-    "SUPPORT_GAIN": 0.0,
+    "DFL": 2.5,
     "PHASE_TARGET_LONG_EDGE": 1024,
     "OBJECT_CROPS": 0,
     "TILE_INFERENCE": 0,
@@ -108,15 +104,7 @@ def _cfg(key: str):
         "TILE_INFERENCE",
     ):
         return int(value)
-    if key in (
-        "LOWER_PERCENTILE",
-        "UPPER_PERCENTILE",
-        "CLS_PW",
-        "SCALE",
-        "DFL",
-        "FUSION_IOU",
-        "SUPPORT_GAIN",
-    ):
+    if key in ("LOWER_PERCENTILE", "UPPER_PERCENTILE", "CLS_PW", "SCALE", "DFL"):
         return float(value)
     return value
 
@@ -133,8 +121,6 @@ UPPER_PERCENTILE = _cfg("UPPER_PERCENTILE")
 CLS_PW = _cfg("CLS_PW")
 SCALE = _cfg("SCALE")
 DFL = _cfg("DFL")
-FUSION_IOU = _cfg("FUSION_IOU")
-SUPPORT_GAIN = _cfg("SUPPORT_GAIN")
 PHASE_TARGET_LONG_EDGE = _cfg("PHASE_TARGET_LONG_EDGE")
 OBJECT_CROPS = bool(_cfg("OBJECT_CROPS"))
 TILE_INFERENCE = bool(_cfg("TILE_INFERENCE"))
@@ -154,10 +140,6 @@ if not 0.0 <= SCALE <= 1.0:
     raise SystemExit(f"HSI_SCALE 必须满足 0.0 <= value <= 1.0，收到 {SCALE:g}")
 if not math.isfinite(DFL) or DFL < 0.0:
     raise SystemExit(f"HSI_DFL 必须是有限非负数，收到 {DFL:g}")
-if not math.isfinite(FUSION_IOU) or not 0.0 < FUSION_IOU <= 1.0:
-    raise SystemExit(f"HSI_FUSION_IOU 必须是 (0, 1] 内的有限数，收到 {FUSION_IOU:g}")
-if not math.isfinite(SUPPORT_GAIN) or SUPPORT_GAIN < 0.0:
-    raise SystemExit(f"HSI_SUPPORT_GAIN 必须是有限非负数，收到 {SUPPORT_GAIN:g}")
 if SPECTRAL_STEM and EXTRA_CHANNEL_INIT != "random":
     raise SystemExit(
         "HSI_SPECTRAL_STEM 与 HSI_EXTRA_CHANNEL_INIT=zero 互斥；"
@@ -188,8 +170,6 @@ def _parse_attempts(text: str):
 
 ATTEMPTS = _parse_attempts(_cfg("ATTEMPTS"))
 MULTISCALE = bool(_cfg("MULTISCALE"))
-if not MULTISCALE and (FUSION_IOU != 0.70 or SUPPORT_GAIN != 0.0):
-    raise SystemExit("非默认 HSI_FUSION_IOU/HSI_SUPPORT_GAIN 要求 HSI_MULTISCALE=1")
 DATA = _cfg("DATA")   # hsi16 / hsi16_phase = 16 波段 NPY；pseudo_rgb[:bands] = 三通道 PNG
 BANDS = ["5", "8", "13"]
 if DATA.startswith("pseudo_rgb"):
@@ -230,7 +210,6 @@ STATUS = {
                "CLS_PW": CLS_PW,
                "SCALE": SCALE,
                "DFL": DFL,
-               "FUSION_IOU": FUSION_IOU, "SUPPORT_GAIN": SUPPORT_GAIN,
                "PHASE_TARGET_LONG_EDGE": PHASE_TARGET_LONG_EDGE,
                "OBJECT_CROPS": OBJECT_CROPS, "TILE_INFERENCE": TILE_INFERENCE,
                "IMGSZ": IMGSZ, "SEED": SEED},
@@ -582,11 +561,7 @@ def _main() -> None:
            "--input-format", IMAGE_EXT, "--batch", "1", "--device", "0", "--half",
            "--conf", "0.0001", "--iou", "0.70", "--max-det", "300", "--imgsz", str(IMGSZ)]
     if MULTISCALE:
-        cmd += [
-            "--multi-scale", *MULTISCALE_SIZES,
-            "--fusion-iou", f"{FUSION_IOU:g}",
-            "--support-gain", f"{SUPPORT_GAIN:g}",
-        ]
+        cmd += ["--multi-scale", *MULTISCALE_SIZES, "--fusion-iou", "0.70"]
     if TILE_INFERENCE:
         cmd += [
             "--tile-size", "128", "256",
@@ -606,8 +581,6 @@ def _main() -> None:
         "predicted",
         sec=round(time.time() - t0),
         multiscale=MULTISCALE,
-        fusion_iou=FUSION_IOU if MULTISCALE else None,
-        support_gain=SUPPORT_GAIN if MULTISCALE else None,
         tiled=TILE_INFERENCE,
         check=tail.strip()[-200:],
     )

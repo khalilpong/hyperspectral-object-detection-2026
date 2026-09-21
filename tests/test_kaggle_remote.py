@@ -55,6 +55,18 @@ def test_percentile_validation_and_stable_tags() -> None:
         module._validate_scale(-0.01)
     with pytest.raises(ValueError):
         module._validate_scale(1.01)
+    module._validate_dfl(0.0)
+    module._validate_dfl(1.5)
+    module._validate_dfl(2.0)
+    with pytest.raises(ValueError):
+        module._validate_dfl(-0.01)
+    with pytest.raises(ValueError):
+        module._validate_dfl(float("nan"))
+    module._validate_inference_fusion(0.74, 0.125)
+    with pytest.raises(ValueError):
+        module._validate_inference_fusion(0.0, 0.125)
+    with pytest.raises(ValueError):
+        module._validate_inference_fusion(0.74, -0.01)
 
 
 def test_make_kernel_renders_isolated_p1_p99_variant(tmp_path: Path, monkeypatch) -> None:
@@ -305,6 +317,94 @@ def test_make_kernel_renders_isolated_random_affine_scale_variant(
         "zephyrpong/hsi-detection-code",
         "zephyrpong/hsi-competition-raw",
     ]
+
+
+def test_make_kernel_renders_isolated_dfl_variant(tmp_path: Path, monkeypatch) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--dfl",
+            "2.0",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_dfl200"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_dfl200_e30"' in rendered
+    assert '"DFL": 2.0' in rendered
+    assert '"SCALE": 0.5' in rendered
+    assert '"CLS_PW": 0.0' in rendered
+    assert '"DATA": "hsi16"' in rendered
+    assert '"EXTRA_CHANNEL_INIT": "random"' in rendered
+    assert '"SPECTRAL_STEM": 0' in rendered
+    assert '"OBJECT_CROPS": 0' in rendered
+    assert '"TILE_INFERENCE": 0' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-dfl200-ablation"
+    assert metadata["is_private"] is True
+    assert metadata["dataset_sources"] == [
+        "zephyrpong/hsi-detection-code",
+        "zephyrpong/hsi-competition-raw",
+    ]
+
+
+def test_make_kernel_renders_single_checkpoint_supported_multiscale_full_candidate(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "full",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--dfl",
+            "2.0",
+            "--multiscale",
+            "--fusion-iou",
+            "0.74",
+            "--support-gain",
+            "0.125",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_full_dfl200_f074_sg0125"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"MODEL": "yolo26m.pt"' in rendered
+    assert '"DFL": 2.0' in rendered
+    assert '"MULTISCALE": 1' in rendered
+    assert '"FUSION_IOU": 0.74' in rendered
+    assert '"SUPPORT_GAIN": 0.125' in rendered
+    assert '"RUN_NAME": "kaggle_full_yolo26m_dfl200_e30"' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-dfl200-f074-sg0125-full"
+    assert metadata["is_private"] is True
 
 
 def test_make_kernel_rejects_conflicting_spectral_initialization(

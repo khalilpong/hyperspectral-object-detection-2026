@@ -184,6 +184,56 @@ def test_box_vote_never_merges_different_classes() -> None:
     assert fused_classes.tolist() == [1.0, 2.0]
 
 
+def test_box_vote_accepts_class_specific_iou_thresholds() -> None:
+    boxes = np.asarray(
+        [
+            [0.0, 0.0, 10.0, 10.0],
+            [2.0, 0.0, 12.0, 10.0],
+            [20.0, 0.0, 30.0, 10.0],
+            [22.0, 0.0, 32.0, 10.0],
+        ],
+        dtype=np.float32,
+    )
+    classes = np.asarray([1, 1, 2, 2], dtype=np.float32)
+    confidences = np.asarray([0.9, 0.8, 0.7, 0.6], dtype=np.float32)
+
+    fused_boxes, fused_classes, _ = _box_vote(
+        boxes,
+        classes,
+        confidences,
+        iou_threshold={1: 0.6, 2: 0.8},
+        max_det=10,
+        source_ids=np.asarray([0, 1, 0, 1]),
+    )
+
+    assert len(fused_boxes) == 3
+    assert fused_classes.tolist().count(1.0) == 1
+    assert fused_classes.tolist().count(2.0) == 2
+
+
+def test_box_vote_rejects_incomplete_or_invalid_class_thresholds() -> None:
+    boxes = np.asarray([[0.0, 0.0, 10.0, 10.0]], dtype=np.float32)
+    classes = np.asarray([2], dtype=np.float32)
+    confidences = np.asarray([0.9], dtype=np.float32)
+
+    with pytest.raises(ValueError, match="Missing fusion IoU"):
+        _box_vote(
+            boxes,
+            classes,
+            confidences,
+            iou_threshold={1: 0.5},
+            max_det=10,
+        )
+    with pytest.raises(ValueError, match="Every class fusion IoU"):
+        _box_vote(
+            boxes,
+            classes,
+            confidences,
+            iou_threshold={2: float("nan")},
+            max_det=10,
+        )
+
+
 def test_box_vote_support_gain_rewards_independent_agreement() -> None:
     boxes = np.asarray(
         [[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0], [20.0, 20.0, 30.0, 30.0]],
@@ -232,8 +282,6 @@ def test_box_vote_rejects_invalid_support_configuration() -> None:
             support_gain=0.1,
             total_sources=1,
         )
-
-
 def test_normalize_multiscale_requires_distinct_positive_sizes() -> None:
     assert _normalize_multiscale([960, 1024, 960, 1088]) == (960, 1024, 1088)
     with pytest.raises(ValueError, match="at least two distinct"):

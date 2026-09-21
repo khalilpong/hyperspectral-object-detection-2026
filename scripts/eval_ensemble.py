@@ -90,6 +90,17 @@ def _fused(sources, image_paths, fusion_iou, max_det, support_gain=0.0):
         yield PredictionArrays(path, fused_boxes, fused_classes, fused_confidences, records[0][0].orig_shape)
 
 
+def _validate_submission_model_count(
+    model_specs: list[str], submission: Path | None
+) -> None:
+    """Prevent historical multi-model research paths from emitting competition CSVs."""
+    if submission is not None and len(model_specs) != 1:
+        raise ValueError(
+            "Competition submission generation requires exactly one trained checkpoint; "
+            "multi-model fusion is prohibited by the competition rules"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", action="append", required=True, metavar="TAG=WEIGHTS[@MULT][#DATASET_ROOT]",
@@ -124,6 +135,10 @@ def main() -> None:
                              "and second weight instead of evaluating held-out labels.")
     parser.add_argument("--images", type=Path, help="Image directory for --submission.")
     args = parser.parse_args()
+    try:
+        _validate_submission_model_count(args.model, args.submission)
+    except ValueError as error:
+        parser.error(str(error))
     if args.submission is not None and len(args.support_gains) != 1:
         parser.error("--submission accepts exactly one --support-gain value")
 

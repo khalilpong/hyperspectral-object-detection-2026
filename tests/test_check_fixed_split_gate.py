@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import csv
+import json
+from pathlib import Path
+
+import pytest
+
+from scripts.check_fixed_split_gate import audit_fixed_split
+
+
+def _write_run(tmp_path: Path, *, dfl: float, best: float) -> tuple[Path, Path]:
+    status = {
+        "config": {
+            "MODE": "ablation",
+            "MODEL": "yolo26m.pt",
+            "EPOCHS": 30,
+            "RUN_NAME": f"dfl{dfl}",
+            "MULTISCALE": False,
+            "DATA": "hsi16",
+            "SEED": 2026,
+            "EXTRA_CHANNEL_INIT": "random",
+            "SPECTRAL_STEM": False,
+            "LOWER_PERCENTILE": 0.5,
+            "UPPER_PERCENTILE": 99.5,
+            "CLS_PW": 0.0,
+            "SCALE": 0.5,
+            "DFL": dfl,
+            "PHASE_TARGET_LONG_EDGE": 1024,
+            "OBJECT_CROPS": False,
+            "TILE_INFERENCE": False,
+            "IMGSZ": 1024,
+        },
+        "steps": {
+            "train_attempt_b8_w2_d0": {
+                "returncode": 0,
+                "cuda_oom": False,
+                "shm_error": False,
+            }
+        },
+        "result": "success",
+    }
+    status_path = tmp_path / "status.json"
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+
+    results_path = tmp_path / "results.csv"
+    with results_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["epoch", "metrics/mAP50(B)", "metrics/mAP50-95(B)"],
+        )
+        writer.writeheader()
+        for epoch in range(1, 31):
+            writer.writerow(
+                {
+                    "epoch": epoch,
+                    "metrics/mAP50(B)": 0.95,
+                    "metrics/mAP50-95(B)": best if epoch == 29 else 0.70,
+                }
+            )
+    return status_path, results_path
+
+
+def test_audit_fixed_split_applies_gate_and_records_hashes(tmp_path: Path) -> None:
+    status, results = _write_run(tmp_path, dfl=2.0, best=0.705)
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_dfl=2.0,
+        gate=0.70443,
+    )
+
+    assert report["best_epoch"] == 29
+    assert report["passes_full_data_gate"] is True
+    assert report["decision"] == "eligible_for_single_checkpoint_full_data"
+    assert len(report["hashes"]["status_sha256"]) == 64
+
+
+def test_audit_fixed_split_rejects_failed_gate(tmp_path: Path) -> None:
+    status, results = _write_run(tmp_path, dfl=2.5, best=0.703)
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_dfl=2.5,
+        gate=0.70443,
+    )
+
+    assert report["passes_full_data_gate"] is False
+    assert report["decision"] == "reject_no_full_data"
+
+
+def test_audit_fixed_split_rejects_config_drift(tmp_path: Path) -> None:
+    status, results = _write_run(tmp_path, dfl=2.0, best=0.705)
+
+    with pytest.raises(ValueError, match="config mismatch"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_dfl=2.5,
+            gate=0.70443,
+        )

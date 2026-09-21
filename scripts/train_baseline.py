@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from pathlib import Path
 from typing import Any, Sequence
@@ -33,6 +34,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lrf", type=float)
     parser.add_argument("--warmup-epochs", type=float)
     parser.add_argument("--box", type=float)
+    parser.add_argument(
+        "--dfl",
+        type=float,
+        help="Distribution Focal Loss gain for box-edge distance supervision.",
+    )
     parser.add_argument(
         "--cls-pw",
         type=float,
@@ -92,6 +98,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--resume recovers SpectralStem from the checkpoint; do not pass --spectral-stem")
     if args.cls_pw is not None and not 0.0 <= args.cls_pw <= 1.0:
         parser.error("--cls-pw must satisfy 0.0 <= value <= 1.0")
+    if args.dfl is not None and (not math.isfinite(args.dfl) or args.dfl < 0.0):
+        parser.error("--dfl must be finite and non-negative")
 
     if args.resume:
         unsupported = [
@@ -107,6 +115,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 "lrf",
                 "warmup_epochs",
                 "box",
+                "dfl",
                 "cls_pw",
                 "hsv_h",
                 "hsv_s",
@@ -170,6 +179,7 @@ def build_train_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "lrf",
         "warmup_epochs",
         "box",
+        "dfl",
         "cls_pw",
         "hsv_h",
         "hsv_s",

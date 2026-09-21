@@ -28,6 +28,7 @@ def test_new_run_keeps_documented_defaults() -> None:
     assert kwargs["plots"] is True
     assert kwargs["resume"] is False
     assert "cls_pw" not in kwargs
+    assert "dfl" not in kwargs
 
 
 def test_resume_does_not_apply_fresh_run_defaults() -> None:
@@ -83,6 +84,8 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
             "1",
             "--box",
             "10",
+            "--dfl",
+            "2.0",
             "--cls-pw",
             "0.25",
             "--hsv-h",
@@ -109,6 +112,7 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
     assert kwargs["lrf"] == 0.1
     assert kwargs["warmup_epochs"] == 1.0
     assert kwargs["box"] == 10.0
+    assert kwargs["dfl"] == 2.0
     assert kwargs["cls_pw"] == 0.25
     assert kwargs["hsv_h"] == 0.0
     assert kwargs["hsv_s"] == 0.0
@@ -143,6 +147,19 @@ def test_cls_pw_validates_range_and_cannot_override_resume() -> None:
     with pytest.raises(SystemExit):
         train_baseline.parse_args(
             ["--resume", "runs/example/weights/last.pt", "--cls-pw", "0.25"]
+        )
+
+
+def test_dfl_validates_range_and_cannot_override_resume() -> None:
+    assert train_baseline.parse_args(["--dfl", "2.0"]).dfl == 2.0
+
+    for invalid in ("-0.01", "nan", "inf"):
+        with pytest.raises(SystemExit):
+            train_baseline.parse_args(["--dfl", invalid])
+
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            ["--resume", "runs/example/weights/last.pt", "--dfl", "2.0"]
         )
 
 

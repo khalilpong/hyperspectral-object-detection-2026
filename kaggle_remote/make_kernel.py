@@ -19,6 +19,8 @@
         --data hsi16_phase --phase-target-long-edge 1024
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --cls-pw 0.25
+    python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
+        --dfl 2.0
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -26,6 +28,7 @@
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 
@@ -70,6 +73,22 @@ def _validate_scale(value: float) -> None:
         raise ValueError(f"random-affine scale 必须满足 0.0 <= value <= 1.0，收到 {value:g}")
 
 
+def _validate_dfl(value: float) -> None:
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(f"dfl loss gain 必须是有限非负数，收到 {value:g}")
+
+
+def _validate_inference_fusion(fusion_iou: float, support_gain: float) -> None:
+    if not math.isfinite(fusion_iou) or not 0.0 < fusion_iou <= 1.0:
+        raise ValueError(f"fusion IoU 必须是 (0, 1] 内的有限数，收到 {fusion_iou:g}")
+    if not math.isfinite(support_gain) or support_gain < 0.0:
+        raise ValueError(f"support gain 必须是有限非负数，收到 {support_gain:g}")
+
+
+def _compact_decimal_tag(value: float) -> str:
+    return f"{value:g}".replace("-", "m").replace(".", "")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("smoke", "ablation", "full"), required=True)
@@ -94,6 +113,12 @@ def main() -> None:
                         help="分类 BCE 的类别频次权重幂；0.0 关闭，1.0 为完整逆频率")
     parser.add_argument("--scale", type=float, default=0.5,
                         help="训练 random-affine scale；0.5 为 Ultralytics 基线，区别于推理 multiscale")
+    parser.add_argument("--dfl", type=float, default=1.5,
+                        help="Distribution Focal Loss gain；1.5 为 Ultralytics 基线")
+    parser.add_argument("--fusion-iou", type=float, default=0.70,
+                        help="同一 checkpoint 多尺度 box voting IoU；仅 --multiscale 生效")
+    parser.add_argument("--support-gain", type=float, default=0.0,
+                        help="同一 checkpoint 多尺度支持票加成；仅 --multiscale 生效")
     parser.add_argument("--phase-target-long-edge", type=int, default=1024,
                         help="hsi16_phase 保持宽高比重建后的目标长边")
     parser.add_argument("--object-crops", action="store_true",
@@ -109,6 +134,8 @@ def main() -> None:
         _validate_percentiles(args.lower_percentile, args.upper_percentile)
         _validate_cls_pw(args.cls_pw)
         _validate_scale(args.scale)
+        _validate_dfl(args.dfl)
+        _validate_inference_fusion(args.fusion_iou, args.support_gain)
     except ValueError as error:
         parser.error(str(error))
     if (args.object_crops or args.tile_inference) and args.data != "hsi16":
@@ -123,6 +150,8 @@ def main() -> None:
         parser.error("--phase-target-long-edge 只适用于 --data hsi16_phase")
     if args.data == "hsi16_phase" and args.extra_channel_init != "random":
         parser.error("hsi16_phase 单变量实验必须使用 --extra-channel-init random")
+    if not args.multiscale and (args.fusion_iou != 0.70 or args.support_gain != 0.0):
+        parser.error("--fusion-iou/--support-gain 的非默认值要求同时启用 --multiscale")
 
     model_tag = args.model.removesuffix(".pt")
     if args.data in ("hsi16", "hsi16_phase"):
@@ -145,11 +174,18 @@ def main() -> None:
     stem_tag = "_stem" if args.spectral_stem else ""
     cls_pw_tag = "" if args.cls_pw == 0.0 else f"_clspw{_fraction_tag(args.cls_pw)}"
     scale_tag = "" if args.scale == 0.5 else f"_scale{_fraction_tag(args.scale)}"
+    dfl_tag = "" if args.dfl == 1.5 else f"_dfl{_fraction_tag(args.dfl)}"
     crop_tag = "_crop" if args.object_crops else ""
     tile_tag = "_tile" if args.tile_inference else ""
-    variant_tag = data_tag + init_tag + stem_tag + cls_pw_tag + scale_tag + crop_tag + tile_tag
+    variant_tag = data_tag + init_tag + stem_tag + cls_pw_tag + scale_tag + dfl_tag + crop_tag + tile_tag
+    inference_tag = ""
+    if args.multiscale:
+        if args.fusion_iou != 0.70:
+            inference_tag += f"_f{_compact_decimal_tag(args.fusion_iou)}"
+        if args.support_gain != 0.0:
+            inference_tag += f"_sg{_compact_decimal_tag(args.support_gain)}"
     run_name = args.run_name or f"kaggle_{args.mode}_{model_tag}{variant_tag}_e{args.epochs}"
-    slug = f"hsi-{model_tag}{variant_tag}-{args.mode}".replace("_", "-")
+    slug = f"hsi-{model_tag}{variant_tag}{inference_tag}-{args.mode}".replace("_", "-")
 
     source = (HERE / "run_hsi_yolo26.py").read_text(encoding="utf-8")
     config = (
@@ -168,6 +204,9 @@ def main() -> None:
         f'    "UPPER_PERCENTILE": {args.upper_percentile!r},\n'
         f'    "CLS_PW": {args.cls_pw!r},\n'
         f'    "SCALE": {args.scale!r},\n'
+        f'    "DFL": {args.dfl!r},\n'
+        f'    "FUSION_IOU": {args.fusion_iou!r},\n'
+        f'    "SUPPORT_GAIN": {args.support_gain!r},\n'
         f'    "PHASE_TARGET_LONG_EDGE": {args.phase_target_long_edge},\n'
         f'    "OBJECT_CROPS": {1 if args.object_crops else 0},\n'
         f'    "TILE_INFERENCE": {1 if args.tile_inference else 0},\n'
@@ -177,7 +216,7 @@ def main() -> None:
     if count != 1:
         raise SystemExit("主脚本里没有找到 CONFIG 块，无法生成")
 
-    folder = HERE / f"kernel_{args.mode}{variant_tag}"
+    folder = HERE / f"kernel_{args.mode}{variant_tag}{inference_tag}"
     folder.mkdir(exist_ok=True)
     (folder / "run_hsi_yolo26.py").write_text(rendered, encoding="utf-8")
     metadata = {
@@ -212,6 +251,8 @@ def main() -> None:
           f"spectral_stem={args.spectral_stem} "
           f"cls_pw={args.cls_pw:g} "
           f"scale={args.scale:g} "
+          f"dfl={args.dfl:g} "
+          f"fusion_iou={args.fusion_iou:g} support_gain={args.support_gain:g} "
           f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "
           f"phase_target_long_edge={args.phase_target_long_edge} "
           f"object_crops={args.object_crops} tile_inference={args.tile_inference}")

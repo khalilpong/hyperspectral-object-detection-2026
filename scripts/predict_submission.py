@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -269,7 +270,7 @@ def _box_vote(
     classes: np.ndarray,
     confidences: np.ndarray,
     *,
-    iou_threshold: float,
+    iou_threshold: float | Mapping[int, float],
     max_det: int,
     source_ids: np.ndarray | None = None,
     support_gain: float = 0.0,
@@ -293,8 +294,20 @@ def _box_vote(
         raise ValueError(f"Expected boxes with shape N x 4, got {boxes.shape}")
     if len(classes) != len(boxes) or len(confidences) != len(boxes):
         raise ValueError("Box, class, and confidence arrays must have equal lengths")
-    if not 0.0 < iou_threshold <= 1.0:
-        raise ValueError("Fusion IoU must be in (0, 1]")
+    if isinstance(iou_threshold, Mapping):
+        class_iou_thresholds = {
+            int(class_id): float(threshold)
+            for class_id, threshold in iou_threshold.items()
+        }
+        if any(
+            not np.isfinite(threshold) or not 0.0 < threshold <= 1.0
+            for threshold in class_iou_thresholds.values()
+        ):
+            raise ValueError("Every class fusion IoU must be finite and in (0, 1]")
+    else:
+        if not np.isfinite(iou_threshold) or not 0.0 < iou_threshold <= 1.0:
+            raise ValueError("Fusion IoU must be finite and in (0, 1]")
+        class_iou_thresholds = None
     if max_det <= 0:
         raise ValueError("max_det must be positive")
     if not np.isfinite(support_gain) or support_gain < 0.0:
@@ -336,6 +349,15 @@ def _box_vote(
     fused_classes: list[float] = []
     fused_confidences: list[float] = []
     for class_id in np.unique(classes):
+        if class_iou_thresholds is None:
+            class_iou_threshold = float(iou_threshold)
+        else:
+            integer_class_id = int(class_id)
+            if integer_class_id not in class_iou_thresholds:
+                raise ValueError(
+                    f"Missing fusion IoU for observed class {integer_class_id}"
+                )
+            class_iou_threshold = class_iou_thresholds[integer_class_id]
         class_indices = np.flatnonzero(classes == class_id)
         class_indices = class_indices[np.argsort(confidences[class_indices])[::-1]]
         cluster_boxes: list[np.ndarray] = []
@@ -358,7 +380,7 @@ def _box_vote(
                 eligible_boxes = np.stack([cluster_boxes[i] for i in eligible])
                 ious = _iou_one_to_many(box, eligible_boxes)
                 best_position = int(np.argmax(ious))
-                if float(ious[best_position]) >= iou_threshold:
+                if float(ious[best_position]) >= class_iou_threshold:
                     best_cluster = eligible[best_position]
 
             weight = max(confidence, 1e-8)
