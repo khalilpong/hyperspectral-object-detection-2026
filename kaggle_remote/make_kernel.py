@@ -17,6 +17,8 @@
         --spectral-stem
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --data hsi16_phase --phase-target-long-edge 1024
+    python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
+        --cls-pw 0.25
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -51,6 +53,18 @@ def _validate_percentiles(lower: float, upper: float) -> None:
         )
 
 
+def _fraction_tag(value: float) -> str:
+    scaled = round(value * 100)
+    if abs(value * 100 - scaled) < 1e-9:
+        return f"{scaled:03d}"
+    return f"{value:g}".replace(".", "p")
+
+
+def _validate_cls_pw(value: float) -> None:
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"cls_pw 必须满足 0.0 <= value <= 1.0，收到 {value:g}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("smoke", "ablation", "full"), required=True)
@@ -71,6 +85,8 @@ def main() -> None:
                         help="HSI16 共享缩放下百分位")
     parser.add_argument("--upper-percentile", type=float, default=99.5,
                         help="HSI16 共享缩放上百分位")
+    parser.add_argument("--cls-pw", type=float, default=0.0,
+                        help="分类 BCE 的类别频次权重幂；0.0 关闭，1.0 为完整逆频率")
     parser.add_argument("--phase-target-long-edge", type=int, default=1024,
                         help="hsi16_phase 保持宽高比重建后的目标长边")
     parser.add_argument("--object-crops", action="store_true",
@@ -84,6 +100,7 @@ def main() -> None:
 
     try:
         _validate_percentiles(args.lower_percentile, args.upper_percentile)
+        _validate_cls_pw(args.cls_pw)
     except ValueError as error:
         parser.error(str(error))
     if (args.object_crops or args.tile_inference) and args.data != "hsi16":
@@ -118,9 +135,10 @@ def main() -> None:
         raise SystemExit(f"未知 --data {args.data}")
     init_tag = "" if args.extra_channel_init == "random" else f"_xc{args.extra_channel_init}"
     stem_tag = "_stem" if args.spectral_stem else ""
+    cls_pw_tag = "" if args.cls_pw == 0.0 else f"_clspw{_fraction_tag(args.cls_pw)}"
     crop_tag = "_crop" if args.object_crops else ""
     tile_tag = "_tile" if args.tile_inference else ""
-    variant_tag = data_tag + init_tag + stem_tag + crop_tag + tile_tag
+    variant_tag = data_tag + init_tag + stem_tag + cls_pw_tag + crop_tag + tile_tag
     run_name = args.run_name or f"kaggle_{args.mode}_{model_tag}{variant_tag}_e{args.epochs}"
     slug = f"hsi-{model_tag}{variant_tag}-{args.mode}".replace("_", "-")
 
@@ -139,6 +157,7 @@ def main() -> None:
         f'    "SPECTRAL_STEM": {1 if args.spectral_stem else 0},\n'
         f'    "LOWER_PERCENTILE": {args.lower_percentile!r},\n'
         f'    "UPPER_PERCENTILE": {args.upper_percentile!r},\n'
+        f'    "CLS_PW": {args.cls_pw!r},\n'
         f'    "PHASE_TARGET_LONG_EDGE": {args.phase_target_long_edge},\n'
         f'    "OBJECT_CROPS": {1 if args.object_crops else 0},\n'
         f'    "TILE_INFERENCE": {1 if args.tile_inference else 0},\n'
@@ -181,6 +200,7 @@ def main() -> None:
           f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
           f"seed={args.seed} extra_channel_init={args.extra_channel_init} "
           f"spectral_stem={args.spectral_stem} "
+          f"cls_pw={args.cls_pw:g} "
           f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "
           f"phase_target_long_edge={args.phase_target_long_edge} "
           f"object_crops={args.object_crops} tile_inference={args.tile_inference}")

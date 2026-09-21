@@ -33,6 +33,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lrf", type=float)
     parser.add_argument("--warmup-epochs", type=float)
     parser.add_argument("--box", type=float)
+    parser.add_argument(
+        "--cls-pw",
+        type=float,
+        help=(
+            "Class-frequency weighting power for classification BCE. "
+            "Ultralytics accepts 0.0 (disabled) through 1.0 (full inverse frequency)."
+        ),
+    )
     parser.add_argument("--hsv-h", type=float)
     parser.add_argument("--hsv-s", type=float)
     parser.add_argument("--hsv-v", type=float)
@@ -82,6 +90,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--spectral-stem and --extra-channel-init are mutually exclusive")
     if args.resume and args.spectral_stem:
         parser.error("--resume recovers SpectralStem from the checkpoint; do not pass --spectral-stem")
+    if args.cls_pw is not None and not 0.0 <= args.cls_pw <= 1.0:
+        parser.error("--cls-pw must satisfy 0.0 <= value <= 1.0")
 
     if args.resume:
         unsupported = [
@@ -97,6 +107,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 "lrf",
                 "warmup_epochs",
                 "box",
+                "cls_pw",
                 "hsv_h",
                 "hsv_s",
                 "hsv_v",
@@ -159,6 +170,7 @@ def build_train_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "lrf",
         "warmup_epochs",
         "box",
+        "cls_pw",
         "hsv_h",
         "hsv_s",
         "hsv_v",

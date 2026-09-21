@@ -27,6 +27,7 @@ def test_new_run_keeps_documented_defaults() -> None:
     assert kwargs["val"] is True
     assert kwargs["plots"] is True
     assert kwargs["resume"] is False
+    assert "cls_pw" not in kwargs
 
 
 def test_resume_does_not_apply_fresh_run_defaults() -> None:
@@ -82,6 +83,8 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
             "1",
             "--box",
             "10",
+            "--cls-pw",
+            "0.25",
             "--hsv-h",
             "0",
             "--hsv-s",
@@ -106,6 +109,7 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
     assert kwargs["lrf"] == 0.1
     assert kwargs["warmup_epochs"] == 1.0
     assert kwargs["box"] == 10.0
+    assert kwargs["cls_pw"] == 0.25
     assert kwargs["hsv_h"] == 0.0
     assert kwargs["hsv_s"] == 0.0
     assert kwargs["hsv_v"] == 0.2
@@ -126,6 +130,19 @@ def test_resume_rejects_optimizer_or_augmentation_override() -> None:
                 "--hsv-s",
                 "0",
             ]
+        )
+
+
+def test_cls_pw_validates_range_and_cannot_override_resume() -> None:
+    assert train_baseline.parse_args(["--cls-pw", "0.25"]).cls_pw == 0.25
+
+    for invalid in ("-0.01", "1.01"):
+        with pytest.raises(SystemExit):
+            train_baseline.parse_args(["--cls-pw", invalid])
+
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            ["--resume", "runs/example/weights/last.pt", "--cls-pw", "0.25"]
         )
 
 

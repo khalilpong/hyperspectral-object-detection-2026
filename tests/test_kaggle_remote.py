@@ -43,6 +43,11 @@ def test_percentile_validation_and_stable_tags() -> None:
     assert module._percentile_tag(99.0) == "990"
     with pytest.raises(ValueError):
         module._validate_percentiles(99.0, 1.0)
+    module._validate_cls_pw(0.25)
+    assert module._fraction_tag(0.25) == "025"
+    assert module._fraction_tag(0.5) == "050"
+    with pytest.raises(ValueError):
+        module._validate_cls_pw(1.01)
 
 
 def test_make_kernel_renders_isolated_p1_p99_variant(tmp_path: Path, monkeypatch) -> None:
@@ -200,6 +205,48 @@ def test_make_kernel_renders_isolated_phase_aware_variant(
     assert '"OBJECT_CROPS": 0' in rendered
     assert '"TILE_INFERENCE": 0' in rendered
     assert metadata["id"] == "zephyrpong/hsi-yolo26m-phase-ablation"
+    assert metadata["is_private"] is True
+    assert metadata["dataset_sources"] == [
+        "zephyrpong/hsi-detection-code",
+        "zephyrpong/hsi-competition-raw",
+    ]
+
+
+def test_make_kernel_renders_isolated_cls_pw_variant(tmp_path: Path, monkeypatch) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--cls-pw",
+            "0.25",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_clspw025"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_clspw025_e30"' in rendered
+    assert '"CLS_PW": 0.25' in rendered
+    assert '"DATA": "hsi16"' in rendered
+    assert '"EXTRA_CHANNEL_INIT": "random"' in rendered
+    assert '"SPECTRAL_STEM": 0' in rendered
+    assert '"OBJECT_CROPS": 0' in rendered
+    assert '"TILE_INFERENCE": 0' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-clspw025-ablation"
     assert metadata["is_private"] is True
     assert metadata["dataset_sources"] == [
         "zephyrpong/hsi-detection-code",
