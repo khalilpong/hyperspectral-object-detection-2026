@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 04:02（北京时间）
+> 最后更新：2026-09-22 04:14（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -22,7 +22,7 @@
 - random-affine `scale=0.3` 私有 fixed-split 消融已完成并否决：固定 2400/600，已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于 `0.70443` 门槛 `0.00451`。训练 return code 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 31,848 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
 - 同 checkpoint 七尺度来源消融已完成并否决：七项 leave-one-out、中心 3/5 尺度和两组固定对称权重共 11 个候选均低于 `0.70570818` control；最好是删除 `1216`，仍低 `0.00044541`。保留全部七尺度统一权重，不生成或提交新候选。
 - `dfl=2.0` 与 `dfl=2.5` 两个彼此独立的单 YOLO26m fixed-split 私有作业均已完成并否决：最佳/最终分别为 `0.70165` 和 `0.70186`，虽比普通 e30 `0.70143` 高 `+0.00022/+0.00043`，但仍比 `0.70443` 门禁低 `0.00278/0.00257`；不跑对应 full-data、不生成正式候选、不提交，且绝不融合二者。
-- RT-DETR-L HSI16 后备 vertical slice 已在本地跑通：官方 `rtdetr-l.pt`（SHA-256 `6DE60B10...8E73F`）可显式迁移 RGB HGStem 到 16 通道，真实预训练微型 trainer、checkpoint fresh reload、NPY inference、CSV 与 checker 全链路通过。远程 runner 已按架构分支接入并通过 `110` 项测试，私有代码数据集新版本已 `ready`；独立 smoke `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 04:01 推送并处于 `RUNNING`。这仍不是 fixed-split 或实战成绩。
+- RT-DETR-L HSI16 后备 vertical slice 已在本地跑通：官方 `rtdetr-l.pt`（SHA-256 `6DE60B10...8E73F`）可显式迁移 RGB HGStem 到 16 通道，真实预训练微型 trainer、checkpoint fresh reload、NPY inference、CSV 与 checker 全链路通过。远程 runner 已按架构分支接入并通过 `112` 项测试，私有代码数据集新版本已 `ready`；独立 smoke `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 04:01 推送，04:13 再次核验仍为 `RUNNING`。RT-DETR fixed-split 模板与架构感知 `0.70443` 门禁器已准备但未推送。这仍不是 fixed-split 或实战成绩。
 
 ## 👉 接手后第一件事
 
@@ -32,7 +32,7 @@
 4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
 5. `dfl=2.0/2.5` 都已门禁失败；不要启动其 full-data，也不要上传两条作业各自产生的测试 CSV。
 6. 当前持续目标允许继续做合规的 Kaggle GPU 门禁实验；任何最终 Competition Submit 仍须在动作前单独确认，并复核单 checkpoint 血缘、Phase 2 数据覆盖与提交格式，绝不提交历史 ensemble。
-7. 当前只监控 `zephyrpong/hsi-rtdetr-l-smoke` version 1，状态为 `RUNNING`；不要重启。完成后先下载到独立目录，核验 T4、batch 降级、官方预训练加载、16 通道迁移、1 epoch、checkpoint reload、NPY 推理和 checker。只有 smoke 全链路成功才生成独立 fixed 2400/600；fixed 仍须达到 `0.70443`，且绝不能与 YOLO/其他 RT-DETR checkpoint 融合。
+7. 当前只监控 `zephyrpong/hsi-rtdetr-l-smoke` version 1，04:13 状态仍为 `RUNNING`；不要重启。完成后先下载到独立目录，核验 T4、batch 降级、官方预训练加载、16 通道迁移、1 epoch、checkpoint reload、NPY 推理和 checker。只有 smoke 全链路成功才推送已准备的 `kaggle_remote/kernel_ablation_rtdetr`，fixed 仍须达到 `0.70443`，且绝不能与 YOLO/其他 RT-DETR checkpoint 融合。
 
 ### 成绩与合规状态
 

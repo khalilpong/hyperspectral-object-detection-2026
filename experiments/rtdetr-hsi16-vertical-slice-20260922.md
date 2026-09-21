@@ -58,7 +58,7 @@ CPU，1 epoch，imgsz 64）：
 - fresh-process NPY inference 返回标准 `result.boxes`；
 - 现有提交脚本输出 300 框、0 dropped，checker 通过 1/1 图。
 
-完整测试：`110 passed`。私有模板 `kaggle_remote/kernel_smoke_rtdetr`
+完整测试：`112 passed`。私有模板 `kaggle_remote/kernel_smoke_rtdetr`
 脚本语法编译通过；配置为 1 epoch、1024、HSI16、`rtdetr-l.pt`、单
 checkpoint。RT-DETR 所需三个新/更新源码与 runner 已逐文件 SHA-256 同步到
 私有 `hsi-detection-code` staging，新 dataset version 已 `ready`，远端文件清单
@@ -74,4 +74,6 @@ HSI16 Kaggle smoke（优先 batch 2/1），成功后再跑固定 2400/600；固�
 预测融合。独立私有 Kernel `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于
 2026-09-22 04:01（北京时间）推送，首次状态核验为 `RUNNING`。不要重启；完成
 后按环境、batch 降级、预训练迁移、训练、fresh reload、NPY 推理与 checker
-逐项判断 smoke 是否通过。
+逐项判断 smoke 是否通过。架构感知 `scripts/check_fixed_split_gate.py` 已兼容
+RT-DETR，并回放两条旧 YOLO DFL 结果保持一致；`kaggle_remote/kernel_ablation_rtdetr`
+已生成且语法编译通过，但 smoke 成功前不得推送。
