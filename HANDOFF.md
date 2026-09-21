@@ -26,8 +26,8 @@
 - YOLO26m `degrees=5` fixed-split 单变量作业已启动：代码与远程生成器共 `122` 项测试通过，真实 RT-DETR-L 构造也验证了后备 `num_denoising=200` 控制确实落在 decoder；私有代码数据集新版本 `ready`。`zephyrpong/hsi-yolo26m-deg5-ablation` version 1 于 05:29 推送并实时核验为 `RUNNING`。该作业保持普通 HSI16、2400/600、30 epochs、1024、batch 8 fallback、seed 2026、`scale=0.5`、`dfl=1.5`，唯一训练变量为 random-affine `degrees 0→5`；仍须达到 `0.70443` 才能跑 full-data，无 Competition Submit。
 - Phase 2/ranking-set 风险已于 06:00 用 Kaggle CLI 完整枚举 36 页官方文件清单：当前仍恰好 7,003 项（`data_train` 6,000、`data_test` 1,000、另外 3 个根文件），没有 ranking 路径或 2026-08-22 之后的新文件；现有 1,000-test 契约仍正确，但 ranking set 真正发布后必须重新核验。
 - 公开 `YOLO11m + [13,8,5]` Notebook 显示的 `0.7394` 已证实存在严重重复泄漏：其双 `**` glob 把 3,000 张训练 PNG 列成 6,000 条，实际 844 张 val 中有 788 张（93.36%）也在 train，test 也从 1,000 重复为 2,000 条。该分数不得与 fixed 2400/600 门禁比较，也不据此启动 full-data；完整证据见 `experiments/latest-public-strategy-research-20260922.md`。
-- `[13,8,5]` 伪 RGB 后备 fixed 实验已预注册并生成独立私有本地包 `kernel_ablation_prgb1385`；全仓 `123 passed`，生成 runner 与主 runner 只差预期 CONFIG。该包**未上传、未运行**，只有当前两个作业审计后仍值得投入时才考虑推送，门禁仍为 `0.70443`。
-- RT-DETR-L 的 `zero` 额外通道初始化也已预注册为独立 fixed 单变量后备：私有本地包 `kernel_ablation_rtdetr_xczero`、远端 slug `zephyrpong/hsi-rtdetr-l-xczero-ablation`，精确 CONFIG 已检查且全仓 `123 passed`；它**未上传、未运行**。只有当前 random-extra-channel RT-DETR fixed 门禁失败时才允许推送一次，YOLO26m zero-init 的既有负结果不能替代这项不同架构的测量。
+- `[13,8,5]` 伪 RGB 后备 fixed 实验已预注册并生成独立私有本地包 `kernel_ablation_prgb1385`；当前全仓 `124 passed`，生成 runner 与主 runner 只差预期 CONFIG。该包**未上传、未运行**，只有当前两个作业审计后仍值得投入时才考虑推送，门禁仍为 `0.70443`。
+- RT-DETR-L 的 `zero` 额外通道初始化也已预注册为独立 fixed 单变量后备：私有本地包 `kernel_ablation_rtdetr_xczero`、远端 slug `zephyrpong/hsi-rtdetr-l-xczero-ablation`，精确 CONFIG 已检查；架构感知门禁新增了显式 `--expected-extra-channel-init zero` 校验，当前全仓 `124 passed`。它**未上传、未运行**。只有当前 random-extra-channel RT-DETR fixed 门禁失败时才允许推送一次，YOLO26m zero-init 的既有负结果不能替代这项不同架构的测量。
 
 ## 👉 接手后第一件事
 

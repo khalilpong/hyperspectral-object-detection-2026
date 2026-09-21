@@ -17,6 +17,7 @@ def _write_run(
     architecture: str = "yolo",
     model: str = "yolo26m.pt",
     degrees: float | None = None,
+    extra_channel_init: str = "random",
     num_denoising: int | None = None,
 ) -> tuple[Path, Path]:
     status = {
@@ -29,7 +30,7 @@ def _write_run(
             "MULTISCALE": False,
             "DATA": "hsi16",
             "SEED": 2026,
-            "EXTRA_CHANNEL_INIT": "random",
+            "EXTRA_CHANNEL_INIT": extra_channel_init,
             "SPECTRAL_STEM": False,
             "LOWER_PERCENTILE": 0.5,
             "UPPER_PERCENTILE": 99.5,
@@ -196,6 +197,38 @@ def test_audit_fixed_split_checks_rtdetr_denoising_variant(tmp_path: Path) -> No
             expected_architecture="rtdetr",
             expected_model="rtdetr-l.pt",
             expected_rtdetr_num_denoising=100,
+            gate=0.70443,
+        )
+
+
+def test_audit_fixed_split_checks_extra_channel_init_variant(tmp_path: Path) -> None:
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        architecture="rtdetr",
+        model="rtdetr-l.pt",
+        extra_channel_init="zero",
+    )
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_architecture="rtdetr",
+        expected_model="rtdetr-l.pt",
+        expected_extra_channel_init="zero",
+        gate=0.70443,
+    )
+
+    assert report["contract"]["expected_extra_channel_init"] == "zero"
+    assert report["passes_full_data_gate"] is True
+
+    with pytest.raises(ValueError, match="config mismatch"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_architecture="rtdetr",
+            expected_model="rtdetr-l.pt",
             gate=0.70443,
         )
 

@@ -40,6 +40,7 @@ def audit_fixed_split(
     expected_model: str | None = None,
     expected_dfl: float | None = None,
     expected_degrees: float = 0.0,
+    expected_extra_channel_init: str = "random",
     expected_rtdetr_num_denoising: int = 100,
     gate: float,
 ) -> dict[str, object]:
@@ -61,6 +62,10 @@ def audit_fixed_split(
         raise ValueError("RT-DETR does not use the YOLO expected_degrees contract")
     if expected_architecture == "yolo" and expected_rtdetr_num_denoising != 100:
         raise ValueError("YOLO does not use the RT-DETR denoising-query contract")
+    if expected_extra_channel_init not in {"random", "zero"}:
+        raise ValueError(
+            "expected_extra_channel_init must be either 'random' or 'zero'"
+        )
 
     status = json.loads(status_path.read_text(encoding="utf-8"))
     if status.get("result") != "success":
@@ -89,7 +94,7 @@ def audit_fixed_split(
             "MULTISCALE": False,
             "DATA": "hsi16",
             "SEED": 2026,
-            "EXTRA_CHANNEL_INIT": "random",
+            "EXTRA_CHANNEL_INIT": expected_extra_channel_init,
             "SPECTRAL_STEM": False,
             "LOWER_PERCENTILE": 0.5,
             "UPPER_PERCENTILE": 99.5,
@@ -151,6 +156,7 @@ def audit_fixed_split(
         "architecture": expected_architecture,
         "model": expected_model,
         "fixed_split": "fixed_2400_train_600_val",
+        "expected_extra_channel_init": expected_extra_channel_init,
         "gate": gate,
     }
     if expected_dfl is not None:
@@ -188,6 +194,11 @@ def main() -> None:
     parser.add_argument("--model")
     parser.add_argument("--expected-dfl", type=float)
     parser.add_argument("--expected-degrees", type=float, default=0.0)
+    parser.add_argument(
+        "--expected-extra-channel-init",
+        choices=("random", "zero"),
+        default="random",
+    )
     parser.add_argument("--expected-rtdetr-num-denoising", type=int, default=100)
     parser.add_argument("--gate", type=float, default=0.70443)
     parser.add_argument("--output", type=Path)
@@ -204,6 +215,7 @@ def main() -> None:
         expected_model=args.model,
         expected_dfl=args.expected_dfl,
         expected_degrees=args.expected_degrees,
+        expected_extra_channel_init=args.expected_extra_channel_init,
         expected_rtdetr_num_denoising=args.expected_rtdetr_num_denoising,
         gate=args.gate,
     )

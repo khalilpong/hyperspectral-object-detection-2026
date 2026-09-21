@@ -47,4 +47,5 @@ Generation command:
 ```
 
 Local verification on generation: exact CONFIG inspected; private metadata inspected;
-full repository test suite `123 passed`.
+architecture-aware gate now exposes `--expected-extra-channel-init zero`; full
+repository test suite `124 passed`.
