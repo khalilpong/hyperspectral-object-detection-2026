@@ -36,9 +36,22 @@ def audit_fixed_split(
     *,
     status_path: Path,
     results_path: Path,
-    expected_dfl: float,
+    expected_architecture: str = "yolo",
+    expected_model: str | None = None,
+    expected_dfl: float | None = None,
     gate: float,
 ) -> dict[str, object]:
+    if expected_architecture not in {"yolo", "rtdetr"}:
+        raise ValueError(f"Unsupported architecture: {expected_architecture!r}")
+    if expected_model is None:
+        expected_model = (
+            "rtdetr-l.pt" if expected_architecture == "rtdetr" else "yolo26m.pt"
+        )
+    if expected_architecture == "yolo" and expected_dfl is None:
+        raise ValueError("YOLO fixed-split audit requires expected_dfl")
+    if expected_architecture == "rtdetr" and expected_dfl is not None:
+        raise ValueError("RT-DETR does not use the YOLO expected_dfl contract")
+
     status = json.loads(status_path.read_text(encoding="utf-8"))
     if status.get("result") != "success":
         raise ValueError(f"Run is not successful: result={status.get('result')!r}")
@@ -46,11 +59,18 @@ def audit_fixed_split(
     config = status.get("config")
     if not isinstance(config, dict):
         raise ValueError("status.json is missing a config object")
+    observed_architecture = config.get("ARCHITECTURE", "yolo")
+    if observed_architecture != expected_architecture:
+        raise ValueError(
+            "Fixed-split config mismatch: "
+            f"{{'ARCHITECTURE': {{'observed': {observed_architecture!r}, "
+            f"'expected': {expected_architecture!r}}}}}"
+        )
     _expect_equal(
         config,
         {
             "MODE": "ablation",
-            "MODEL": "yolo26m.pt",
+            "MODEL": expected_model,
             "EPOCHS": 30,
             "MULTISCALE": False,
             "DATA": "hsi16",
@@ -61,7 +81,7 @@ def audit_fixed_split(
             "UPPER_PERCENTILE": 99.5,
             "CLS_PW": 0.0,
             "SCALE": 0.5,
-            "DFL": expected_dfl,
+            "DFL": 1.5 if expected_architecture == "rtdetr" else expected_dfl,
             "PHASE_TARGET_LONG_EDGE": 1024,
             "OBJECT_CROPS": False,
             "TILE_INFERENCE": False,
@@ -110,13 +130,17 @@ def audit_fixed_split(
     best = map50_95[best_index]
     final = map50_95[-1]
     passed = best >= gate
+    contract: dict[str, object] = {
+        "single_model": True,
+        "architecture": expected_architecture,
+        "model": expected_model,
+        "fixed_split": "fixed_2400_train_600_val",
+        "gate": gate,
+    }
+    if expected_dfl is not None:
+        contract["expected_dfl"] = expected_dfl
     return {
-        "contract": {
-            "single_model": True,
-            "fixed_split": "fixed_2400_train_600_val",
-            "expected_dfl": expected_dfl,
-            "gate": gate,
-        },
+        "contract": contract,
         "run_name": config.get("RUN_NAME"),
         "best_epoch": epochs[best_index],
         "best_map50_95": best,
@@ -138,14 +162,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--status", type=Path, required=True)
     parser.add_argument("--results", type=Path, required=True)
-    parser.add_argument("--expected-dfl", type=float, required=True)
+    parser.add_argument(
+        "--architecture", choices=("yolo", "rtdetr"), default="yolo"
+    )
+    parser.add_argument("--model")
+    parser.add_argument("--expected-dfl", type=float)
     parser.add_argument("--gate", type=float, default=0.70443)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.architecture == "yolo" and args.expected_dfl is None:
+        parser.error("--expected-dfl is required for --architecture yolo")
+    if args.architecture == "rtdetr" and args.expected_dfl is not None:
+        parser.error("--expected-dfl is not valid for --architecture rtdetr")
 
     report = audit_fixed_split(
         status_path=args.status,
         results_path=args.results,
+        expected_architecture=args.architecture,
+        expected_model=args.model,
         expected_dfl=args.expected_dfl,
         gate=args.gate,
     )

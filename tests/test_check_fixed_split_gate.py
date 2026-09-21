@@ -9,11 +9,19 @@ import pytest
 from scripts.check_fixed_split_gate import audit_fixed_split
 
 
-def _write_run(tmp_path: Path, *, dfl: float, best: float) -> tuple[Path, Path]:
+def _write_run(
+    tmp_path: Path,
+    *,
+    dfl: float,
+    best: float,
+    architecture: str = "yolo",
+    model: str = "yolo26m.pt",
+) -> tuple[Path, Path]:
     status = {
         "config": {
             "MODE": "ablation",
-            "MODEL": "yolo26m.pt",
+            "ARCHITECTURE": architecture,
+            "MODEL": model,
             "EPOCHS": 30,
             "RUN_NAME": f"dfl{dfl}",
             "MULTISCALE": False,
@@ -99,5 +107,49 @@ def test_audit_fixed_split_rejects_config_drift(tmp_path: Path) -> None:
             status_path=status,
             results_path=results,
             expected_dfl=2.5,
+            gate=0.70443,
+        )
+
+
+def test_audit_fixed_split_accepts_rtdetr_contract(tmp_path: Path) -> None:
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        architecture="rtdetr",
+        model="rtdetr-l.pt",
+    )
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_architecture="rtdetr",
+        expected_model="rtdetr-l.pt",
+        gate=0.70443,
+    )
+
+    assert report["contract"]["architecture"] == "rtdetr"
+    assert report["contract"]["model"] == "rtdetr-l.pt"
+    assert "expected_dfl" not in report["contract"]
+    assert report["passes_full_data_gate"] is True
+
+
+def test_audit_fixed_split_rejects_yolo_dfl_contract_for_rtdetr(
+    tmp_path: Path,
+) -> None:
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        architecture="rtdetr",
+        model="rtdetr-l.pt",
+    )
+
+    with pytest.raises(ValueError, match="does not use"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_architecture="rtdetr",
+            expected_dfl=1.5,
             gate=0.70443,
         )
