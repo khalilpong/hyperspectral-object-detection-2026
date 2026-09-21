@@ -127,6 +127,8 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 
 分类损失权重消融通过 `--cls-pw` 单变量控制，并由 runner 写入 `status.json`、训练命令和 `args.yaml`。`hsi-yolo26m-clspw025-ablation` 使用普通 HSI16、固定 2400/600 split、seed 2026、batch 8、workers 2、device 0、30 epochs 和 `cls_pw=0.25`；它只用于 fixed-split 门禁，不自动产生 Public 分数，也不包含 Kaggle Submit。
 
+随机仿射尺度消融通过 `--scale` 单变量控制，并与训练期 `--multi-scale` 明确区分：前者改变每个样本的 random-affine 缩放范围，后者改变训练 batch 的输入尺寸。默认 `scale=0.5`；`hsi-yolo26m-scale030-ablation` 只把它改为 `0.3`，普通 HSI16、固定 2400/600 split、seed 2026、batch 8、workers 2、device 0、30 epochs 和 `cls_pw=0.0` 均保持不变。该运行最佳/最终 `0.69992 < 0.70443`，已否决，不进入 full-data 或比赛 Submit。
+
 ## 踩过的坑
 
 1. **Kaggle 命令行在 Windows 上不能用带 `/` 的相对路径**。
@@ -192,6 +194,7 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 | 09-21 | `hsi-yolo26m-ablation` v2（普通 HSI16，fixed 2400/600，45 轮） | ✅ 3.09 小时；最佳/最终 `0.69899` | 比同规格 e30 低 `0.00244`，门禁失败；36,080 detections 本地 checker 通过；无比赛 Submit |
 | 09-21 | `hsi-yolo26m-phase-ablation` v1（phase-aware HSI16，fixed 2400/600，30 轮） | ✅ 2.50 小时；最佳/最终 `0.69935` | phase-aware bilinear v1，长边 1024；数据准备 21.8 分钟；batch 8/workers 2/device 0；38,304 detections 本地 checker 通过；低于 `0.70443` 门禁；无比赛 Submit |
 | 09-21 | `hsi-yolo26m-clspw025-ablation` v1（普通 HSI16，fixed 2400/600，`cls_pw=0.25`，30 轮） | ✅ 2.29 小时；最佳 epoch 27 `0.69863`，最终 epoch 30 `0.69862` | batch 8/workers 2/device 0；无 CUDA OOM/SHM；36,784 detections 本地 checker 通过；低于 `0.70443` 门禁；无比赛 Submit/Public |
+| 09-21 | `hsi-yolo26m-scale030-ablation` v1（普通 HSI16，fixed 2400/600，random-affine `scale=0.3`，30 轮） | ✅ 2.06 小时；最佳/最终 epoch 30 `0.69992` | 相对普通同规格 e30 低 `0.00151`，低于 `0.70443` 门禁；batch 8/workers 2/device 0；31,848 detections 本地 checker 通过；无 full-data、无比赛 Submit/Public |
 
 ## 冒烟测试结果（2026-09-17，yolo26m，1 轮）
 
@@ -258,5 +261,5 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 | 3. full（全量，30 轮 + 7 尺度推理） | 仅当第 2 步达标 → 出提交 | ✅ **Kaggle 0.62953，新最佳** |
 | 4. yolo26l ablation（双卡 DDP，batch 8） | 更大模型能否 ≥ **0.70443**（m 0.70143 + 0.003） | ❌ 0.69628，单模型不如 m；当第 3 个融合成员只 +0.00076，不训全量 |
 | 6. 伪RGB 的 yolo26m（batch 8，波段 5/8/13、3/6/8、0/7/15 各一个） | 当融合成员 | ✅ 全部训好；三个成员都进了八模型融合，Kaggle **0.64831** |
-| 7. 新的单变量 HSI16 fixed-split 消融 | 在不违反单模型边界下寻找可归因提升 | SpectralStem、phase-aware、e45、`cls_pw=0.25` 均已否决；当前无已授权新训练，见 HANDOFF.md“下一步” |
+| 7. 新的单变量 HSI16 fixed-split 消融 | 在不违反单模型边界下寻找可归因提升 | SpectralStem、phase-aware、e45、`cls_pw=0.25`、random-affine `scale=0.3` 均已否决；当前无已授权新训练，见 HANDOFF.md“下一步” |
 | 5. 本地模型融合（m + s 各 7 尺度共 14 路投票） | 留出集上能否比 m 单模型 +0.003 | ✅ 留出集 0.70830（+0.00426）→ **Kaggle 0.63917，新最佳** |
