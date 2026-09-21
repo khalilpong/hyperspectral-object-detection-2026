@@ -125,6 +125,8 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 
 `hsi16_phase` 只改变输入表示：固定 split、16 通道顺序、标签和 seed 2026 不变；Kernel 实验强制 random extra-channel init，并关闭 SpectralStem、object crops、tile inference。它是 fixed-split 消融，不代表 Public 分数或比赛提交。数据会一次性生成到临时盘；本次 4000 张 NPY 约 33.65 GB，脚本要求至少 45 GiB 可用空间，结束时不会把该缓存带入 Kaggle 输出。
 
+分类损失权重消融通过 `--cls-pw` 单变量控制，并由 runner 写入 `status.json`、训练命令和 `args.yaml`。`hsi-yolo26m-clspw025-ablation` 使用普通 HSI16、固定 2400/600 split、seed 2026、batch 8、workers 2、device 0、30 epochs 和 `cls_pw=0.25`；它只用于 fixed-split 门禁，不自动产生 Public 分数，也不包含 Kaggle Submit。
+
 ## 踩过的坑
 
 1. **Kaggle 命令行在 Windows 上不能用带 `/` 的相对路径**。
@@ -189,6 +191,7 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 | 09-18 08:59~11:37 | `hsi-yolo26m-prgb368-full`（**波段 3/6/8** 伪RGB 全量，batch 8，30 轮） | ✅ 2.55 小时 | 新数据类型；`--data pseudo_rgb:3,6,8` |
 | 09-21 | `hsi-yolo26m-ablation` v2（普通 HSI16，fixed 2400/600，45 轮） | ✅ 3.09 小时；最佳/最终 `0.69899` | 比同规格 e30 低 `0.00244`，门禁失败；36,080 detections 本地 checker 通过；无比赛 Submit |
 | 09-21 | `hsi-yolo26m-phase-ablation` v1（phase-aware HSI16，fixed 2400/600，30 轮） | ✅ 2.50 小时；最佳/最终 `0.69935` | phase-aware bilinear v1，长边 1024；数据准备 21.8 分钟；batch 8/workers 2/device 0；38,304 detections 本地 checker 通过；低于 `0.70443` 门禁；无比赛 Submit |
+| 09-21 | `hsi-yolo26m-clspw025-ablation` v1（普通 HSI16，fixed 2400/600，`cls_pw=0.25`，30 轮） | ✅ 2.29 小时；最佳 epoch 27 `0.69863`，最终 epoch 30 `0.69862` | batch 8/workers 2/device 0；无 CUDA OOM/SHM；36,784 detections 本地 checker 通过；低于 `0.70443` 门禁；无比赛 Submit/Public |
 
 ## 冒烟测试结果（2026-09-17，yolo26m，1 轮）
 
@@ -255,5 +258,5 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 | 3. full（全量，30 轮 + 7 尺度推理） | 仅当第 2 步达标 → 出提交 | ✅ **Kaggle 0.62953，新最佳** |
 | 4. yolo26l ablation（双卡 DDP，batch 8） | 更大模型能否 ≥ **0.70443**（m 0.70143 + 0.003） | ❌ 0.69628，单模型不如 m；当第 3 个融合成员只 +0.00076，不训全量 |
 | 6. 伪RGB 的 yolo26m（batch 8，波段 5/8/13、3/6/8、0/7/15 各一个） | 当融合成员 | ✅ 全部训好；三个成员都进了八模型融合，Kaggle **0.64831** |
-| 7. 再训一个 16 波段强成员 | 融合里 16 波段成员偏弱 | ⬜ 未做，见 HANDOFF.md"下一步" |
+| 7. 新的单变量 HSI16 fixed-split 消融 | 在不违反单模型边界下寻找可归因提升 | SpectralStem、phase-aware、e45、`cls_pw=0.25` 均已否决；当前无已授权新训练，见 HANDOFF.md“下一步” |
 | 5. 本地模型融合（m + s 各 7 尺度共 14 路投票） | 留出集上能否比 m 单模型 +0.003 | ✅ 留出集 0.70830（+0.00426）→ **Kaggle 0.63917，新最佳** |

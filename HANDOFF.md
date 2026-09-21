@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-21 17:34（北京时间）
+> 最后更新：2026-09-21 20:27（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -18,13 +18,15 @@
 - phase-aware bilinear v1 私有消融已完成并否决：固定 2400/600，唯一训练变量是保留 4×4 mosaic 的物理 row/column phase，并按宽高比重建到长边 1024；最佳/最终 epoch 30 为 `0.69935`，比普通同规格 e30 的 `0.70143` 低 `0.00208`，比门槛 `0.70443` 低 `0.00508`。测试 CSV 的 38,304 条检测仅通过本地结构校验，未上传比赛。
 - 显式 horizontal-flip-only 已完成并否决：cache control 精确通过，但当前七尺度最佳 + flip 最高 `0.70587796`，只比 supported-full 高 `+0.00016978`，未达到 `+0.001` 推理门禁；不生成、不提交该候选。
 - 同规格 YOLO26m 45 轮 fixed split 已完成并否决：最佳/最终均为 epoch 45 的 `0.69899`，比 e30 的 `0.70143` 低 `0.00244`，比全量门槛低 `0.00544`；不启动 full-data 45 轮训练，测试 CSV 仅通过本地结构校验，未上传比赛。
+- `cls_pw=0.25` 私有 fixed-split 消融已完成并否决：固定 2400/600，唯一训练变量为分类频次权重；最佳 epoch 27 为 `0.69863`（mAP50 `0.95662`），最终 epoch 30 为 `0.69862`，低于普通同规格 e30 `0.70143` 和 `0.70443` 门槛。训练 return code 0、batch 8/workers 2/device 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 36,784 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
 
 ## 👉 接手后第一件事
 
-1. phase-aware fixed split 已以 `0.69935 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
-2. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
-3. 当前没有正在运行或已授权的新训练。若要继续，先向用户说明候选变量、固定划分门禁和 GPU 成本，再取得新的明确授权。
-4. 仍可讨论的单变量只有温和 `cls_pw`、random-affine `scale` 或新 seed 方差对照；都没有足够正向证据，任何新训练和 Kaggle Submit 均需动作时确认。
+1. `cls_pw=0.25` fixed split 已以最佳 `0.69863 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
+2. phase-aware fixed split 已以 `0.69935 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
+3. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
+4. 当前没有正在运行或已授权的新训练。若要继续，先向用户说明候选变量、固定划分门禁和 GPU 成本，再取得新的明确授权。
+5. 仍可讨论的单变量优先是温和 random-affine `scale` 或新 seed 方差对照；`cls_pw=0.5` 与已失败的 `0.25` 同机制、先验更弱。任何新训练和 Kaggle Submit 均需动作时确认。
 
 ### 成绩与合规状态
 
@@ -38,12 +40,13 @@
 
 ### 下一步可以试的（按优先级）
 
-1. phase-aware HSI16 fixed split 已完成但只有 `0.69935`，低普通同规格 e30 `0.00208`；门禁失败，不跑 full-data、不提交。
-2. YOLO26m e45 fixed split 已完成但只有 `0.69899`，低 e30 `0.00244`；门禁失败，不跑 full-data e45。
-3. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 只增 `+0.00016978`，低于 `+0.001` 门禁，不再投入。
-4. 温和 `cls_pw` 或 random-affine `scale` 只能作为新的单变量 fixed-split 候选；现有证据不足，不能直接全量训练或提交。新 seed 仅有估计方差的价值。
-5. zero-init、object-crop、SpectralStem、phase-aware HSI16、e45、horizontal-flip-only、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
-6. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
+1. `cls_pw=0.25` fixed split 最佳只有 `0.69863`，低普通同规格 e30 `0.00280`；门禁失败，不跑 full-data、不提交。
+2. phase-aware HSI16 fixed split 已完成但只有 `0.69935`，低普通同规格 e30 `0.00208`；门禁失败，不跑 full-data、不提交。
+3. YOLO26m e45 fixed split 已完成但只有 `0.69899`，低 e30 `0.00244`；门禁失败，不跑 full-data e45。
+4. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 只增 `+0.00016978`，低于 `+0.001` 门禁，不再投入。
+5. 温和 random-affine `scale` 或同规格新 seed 只能作为新的单变量 fixed-split 候选；`cls_pw=0.5` 因同机制先验更弱，优先级更低。启动前必须重新取得授权。
+6. zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、e45、horizontal-flip-only、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
+7. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
 > 提交额度每天 3 次，北京时间 08:00 重置。19:27 已用完当日最后一次，下一次提交须等重置后再实时复核。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
 
@@ -96,7 +99,7 @@ kaggle kernels status zephyrpong/<slug>
 
 | 资源 | 说明 |
 |---|---|
-| 私有数据集 `zephyrpong/hsi-detection-code` | 当前状态已实时核验为 `ready`；代码（含 SpectralStem 与 phase-aware HSI16）+ 划分清单 + yolo26m/s 预训练权重 + 主脚本 |
+| 私有数据集 `zephyrpong/hsi-detection-code` | 当前状态已实时核验为 `ready`；代码（含 SpectralStem、phase-aware HSI16 与 `cls_pw` 接入）+ 划分清单 + yolo26m/s 预训练权重 + 主脚本 |
 | 私有数据集 `zephyrpong/hsi-competition-raw` | 原始比赛 zip（比赛数据无法直接挂载进 Notebook，见 Kaggle 文档第 5 条坑） |
 | Notebook `hsi-yolo26m-{smoke,ablation,full}`、`hsi-yolo26l-ablation` | 16 波段 m / l 的各次训练，产物在 `kaggle_remote/outputs/` 对应目录 |
 | Notebook `hsi-yolo26m-p010-990-{full,ablation}` | P1–P99 归一化的新成员；full/ablation 均完成并下载；ablation `0.69668` 低于旧基准 `0.70143`，该方向已否决 |
@@ -104,6 +107,7 @@ kaggle kernels status zephyrpong/<slug>
 | `hsi-yolo26m-stem-ablation` | 私有 Kernel 版本 1 `COMPLETE`；SpectralStem fixed 2400/600，epoch 30 最佳/最终 `0.69930`，门禁失败；不跑全量、不提交 |
 | `hsi-yolo26m-ablation` | 私有 Kernel 版本 2 `COMPLETE`；普通 HSI16 YOLO26m fixed 2400/600 延长到 45 轮，最佳/最终 `0.69899`，门禁失败；不跑 full-data e45、不提交 |
 | `hsi-yolo26m-phase-ablation` | 私有 Kernel 版本 1 `COMPLETE`；phase-aware HSI16 fixed 2400/600，epoch 30 最佳/最终 `0.69935`，门禁失败；不跑 full-data、不提交 |
+| `hsi-yolo26m-clspw025-ablation` | 私有 Kernel 版本 1 `COMPLETE`；普通 HSI16 fixed 2400/600，`cls_pw=0.25`，最佳 epoch 27 `0.69863`，门禁失败；不跑 full-data、不提交 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 
@@ -194,6 +198,7 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | Phase-aware HSI16 输入重建 | `0.69935`，比普通同规格 e30 `0.70143` 低 `0.00208` | 保留 4×4 物理 phase 的 bilinear v1 重建提高了 mAP50，但未改善严格 IoU 定位；低于 `0.70443` 门禁，不跑全量、不提交 |
 | Horizontal-flip-only TTA | 七尺度+flip 最佳 `0.70587796`，只比同 evaluator supported-full 高 `+0.00016978` | cache control 通过，但低于 `+0.001` 推理门禁；不生成、不提交候选 |
 | YOLO26m 延长到 45 轮 | `0.69899`，比 e30 `0.70143` 低 `0.00244` | epochs 31–45 无一轮超过 e30；mAP50 上升但严格 IoU 总指标下降，不跑全量 |
+| `cls_pw=0.25` | fixed split 最佳 `0.69863`，比普通同规格 e30 `0.70143` 低 `0.00280` | 分类频次加权提高 mAP50，但没有改善严格 IoU 定位；低于 `0.70443` 门禁，不跑全量、不提交 |
 | 伪标签（给测试图自动打标签再训练） | Kaggle **−0.0094** | 丢了低分框长尾的召回；伪框继承了教师模型的定位误差 |
 | yolo26m（本机） | Kaggle 0.60553 | **被 8GB 显存逼到 batch=2**，不是模型不行 |
 | P2 小目标检测头 / box loss 权重 10 | 更差 | — |
@@ -209,6 +214,7 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | yolo26m + 16 波段 | batch 8，每轮 4.5~4.8 分钟，30 轮全量约 2.6 小时 |
 | yolo26m + 伪RGB | batch 8，每轮 4.2 分钟，30 轮全量约 2.2 小时（数据准备只要 2.5 分钟，比 16 波段快得多） |
 | yolo26m + phase-aware HSI16 fixed split | 数据生成 21.8 分钟、训练 2.09 小时、推理 83 秒，总流程约 2.50 小时；临时 NPY 约 33.65 GB |
+| yolo26m + HSI16 `cls_pw=0.25` fixed split | 从启动到数据准备完成约 8.9 分钟、训练 2.12 小时、单尺度推理 59 秒，总流程约 2.29 小时；batch 8/workers 2/device 0；36,784 detections 本地 checker 通过；无比赛 Submit |
 | 两张卡 DDP | `--attempts 8:2:0+1` 可用，已实测跑通（yolo26l 每轮 3.1 分钟） |
 | 额度消耗 | 09-17~09-18 两天共用掉约 20 小时（每周约 30 小时，重置日以 Kaggle 页面为准） |
 
