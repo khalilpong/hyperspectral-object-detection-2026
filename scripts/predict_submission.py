@@ -47,7 +47,18 @@ def _batches(paths: Sequence[_T], batch_size: int) -> Iterator[Sequence[_T]]:
         yield paths[start : start + batch_size]
 
 
-def _checkpoint_channels(model: YOLO) -> int:
+def _load_detection_model(weights: Path, architecture: str = "yolo") -> object:
+    resolved = str(weights.resolve())
+    if architecture == "yolo":
+        return YOLO(resolved)
+    if architecture == "rtdetr":
+        from ultralytics import RTDETR
+
+        return RTDETR(resolved)
+    raise ValueError(f"Unsupported detection architecture: {architecture}")
+
+
+def _checkpoint_channels(model: object) -> int:
     channels = getattr(model.model, "yaml", {}).get("channels", 3)
     try:
         channels = int(channels)
@@ -672,6 +683,12 @@ def _fused_multiscale_predictions(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run inference and create submission.csv")
     parser.add_argument("--weights", type=Path, required=True)
+    parser.add_argument(
+        "--architecture",
+        choices=("yolo", "rtdetr"),
+        default="yolo",
+        help="Ultralytics model family used to load --weights.",
+    )
     parser.add_argument("--images", type=Path, default=Path("data/processed/pseudo_rgb/images/test"))
     parser.add_argument("--output", type=Path, default=Path("submission_baseline.csv"))
     parser.add_argument(
@@ -758,7 +775,7 @@ def main() -> None:
         if any(stride > size for stride, size in zip(args.tile_stride, args.tile_size, strict=True)):
             parser.error("each tile stride must not exceed its tile size")
 
-    model = YOLO(str(args.weights.resolve()))
+    model = _load_detection_model(args.weights, args.architecture)
     channels = _checkpoint_channels(model)
     input_format = args.input_format
     if input_format == "auto":

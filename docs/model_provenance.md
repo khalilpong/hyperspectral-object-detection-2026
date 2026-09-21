@@ -15,6 +15,16 @@
 
 同一个训练 checkpoint 的 flip/TTA/多尺度输入变换可以合并；不同 checkpoint、不同训练模型或不同架构的 voting、weighted fusion、post-NMS fusion 均不得用于比赛提交。每次提交所用的唯一权重、代码提交、波段、推理尺度与验证分数都记录在 `experiments/experiments.csv` 及对应实验记录中。
 
+## RT-DETR-L HSI16 架构候选
+
+- 模型：单个 Ultralytics RT-DETR-L detection model；若通过门禁，每份 CSV 也只能由它自己的一个训练 checkpoint 生成，绝不与 YOLO26m 合并。
+- 公开 COCO 预训练初始化：`rtdetr-l.pt`。
+- 官方 Ultralytics Assets `v8.4.0` 文件 SHA-256：`6DE60B10D4BC566F00CDA0F5B4D64AFE4B66D48DC9695D2171EFFB7859D8E73F`。
+- 模型说明：https://docs.ultralytics.com/models/rt-detr/
+- 权重仓库与许可证：与当前 YOLO26m 相同，来自 Ultralytics Assets，按本学习项目的 AGPL-3.0 路径使用。
+- 16 通道适配只改变这个单模型的输入 HGStem：复制预训练 RGB 三通道权重，额外 13 通道随机初始化；训练后仍保存为一个 checkpoint。
+- 当前仅完成本地 vertical slice，不是已通过 fixed-split 的正式候选；详见 `experiments/rtdetr-hsi16-vertical-slice-20260922.md`。
+
 ## 早期 YOLO26n 基线
 
 - 模型：Ultralytics YOLO26n object detection model。

@@ -12,6 +12,7 @@ from scripts.predict_submission import (
     _fused_full_and_tiled_predictions,
     _fused_prediction_sources,
     _horizontal_flip_xyxy,
+    _load_detection_model,
     _normalize_multiscale,
     _npy_prediction_batches,
     _numeric_paths,
@@ -28,6 +29,11 @@ def test_numeric_paths_sort_by_image_id(tmp_path: Path) -> None:
 def test_batches_reject_non_positive_size() -> None:
     with pytest.raises(ValueError, match="--batch must be positive"):
         list(_batches([Path("1.npy")], 0))
+
+
+def test_load_detection_model_rejects_unknown_architecture(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Unsupported detection architecture"):
+        _load_detection_model(tmp_path / "model.pt", "unknown")
 
 
 def test_npy_prediction_batches_preserve_paths_and_bound_batch(tmp_path: Path) -> None:

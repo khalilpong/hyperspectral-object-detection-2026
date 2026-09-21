@@ -22,6 +22,7 @@
 - random-affine `scale=0.3` 私有 fixed-split 消融已完成并否决：固定 2400/600，已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于 `0.70443` 门槛 `0.00451`。训练 return code 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 31,848 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
 - 同 checkpoint 七尺度来源消融已完成并否决：七项 leave-one-out、中心 3/5 尺度和两组固定对称权重共 11 个候选均低于 `0.70570818` control；最好是删除 `1216`，仍低 `0.00044541`。保留全部七尺度统一权重，不生成或提交新候选。
 - `dfl=2.0` 与 `dfl=2.5` 两个彼此独立的单 YOLO26m fixed-split 私有作业正在 Kaggle 运行；各自只改变 DFL gain，按 `0.70443` 分别门禁，绝不融合二者。
+- RT-DETR-L HSI16 后备 vertical slice 已在本地跑通：官方 `rtdetr-l.pt`（SHA-256 `6DE60B10...8E73F`）可显式迁移 RGB HGStem 到 16 通道，真实预训练微型 trainer、checkpoint fresh reload、NPY inference、CSV 与 checker 全链路通过；尚未启动 Kaggle GPU，不能写成 fixed-split 或实战通过。
 
 ## 👉 接手后第一件事
 
@@ -31,6 +32,7 @@
 4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
 5. 当前正在运行 `dfl=2.0` 与 `dfl=2.5` 两个独立 fixed-split 作业；不要重启。完成后下载到不同目录，使用 `scripts/check_fixed_split_gate.py` 分别核验；只有 `>=0.70443` 的候选才进入对应 full-data。
 6. 当前持续目标已明确授权合规 Kaggle GPU 运行与提交；仍需在每次动作前复核单 checkpoint 血缘、门禁、提交格式与 Phase 2 数据覆盖，绝不提交历史 ensemble。
+7. 若两个 DFL 候选均不过门禁，架构级后备是 RT-DETR-L HSI16：先跑独立 Kaggle smoke（batch 2/1），再决定 fixed 2400/600；仍按 `0.70443` 门禁，且绝不能与 YOLO/其他 RT-DETR checkpoint 融合。
 
 ### 成绩与合规状态
 
@@ -50,8 +52,8 @@
 4. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 只增 `+0.00016978`，低于 `+0.001` 门禁，不再投入。
 5. random-affine `scale=0.3` fixed split 已完成但只有 `0.69992`，低普通同规格 e30 `0.00151`；门禁失败，不跑 full-data、不提交。
 6. 同规格新 seed 只能作为新的单变量 fixed-split 方差对照；`cls_pw=0.5` 因与已失败的 `0.25` 同机制、先验更弱，优先级更低。启动前必须重新取得授权。
-7. zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
-8. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
+8. zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
+9. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
 > 提交额度每天 3 次，北京时间 08:00 重置。19:27 已用完当日最后一次，下一次提交须等重置后再实时复核。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
 
