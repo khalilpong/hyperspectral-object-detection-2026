@@ -115,12 +115,15 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 | 值 | 数据 | 生成脚本 | 图片格式 |
 |---|---|---|---|
 | `hsi16`（默认） | 16 波段，共用 P0.5~P99.5 缩放 | `prepare_multispectral.py` | `.npy` |
+| `hsi16_phase` | 保留 4×4 snapshot mosaic 物理 row/column phase 的 16 波段；phase-aware bilinear v1，保持宽高比、长边默认 1024，共用 native-cube P0.5~P99.5 缩放 | `prepare_phase_aware_multispectral.py` | `.npy` |
 | `pseudo_rgb` | 波段 5/8/13 三通道伪RGB | `prepare_pseudo_rgb.py` | `.png` |
 | `pseudo_rgb:3,6,8` | 自定义三个波段的伪RGB | `prepare_pseudo_rgb.py --bands 3 6 8` | `.png` |
 
 `pseudo_rgb` 的 Notebook 名、运行名和生成目录都会带 `prgb`（如 `hsi-yolo26m-prgb-full`、`kernel_full_prgb/`），不会覆盖 16 波段的。
 伪RGB 的训练/验证划分是在 Kaggle 上按种子**现场重新生成**的，脚本会和 `split_manifest.csv` 逐条比对，不一致直接报错。
 （09-18 已在本机验证：重新生成的划分、像素、标注与原数据**完全一致**。）
+
+`hsi16_phase` 只改变输入表示：固定 split、16 通道顺序、标签和 seed 2026 不变；Kernel 实验强制 random extra-channel init，并关闭 SpectralStem、object crops、tile inference。它是 fixed-split 消融，不代表 Public 分数或比赛提交。数据会一次性生成到临时盘；本次 4000 张 NPY 约 33.65 GB，脚本要求至少 45 GiB 可用空间，结束时不会把该缓存带入 Kaggle 输出。
 
 ## 踩过的坑
 
@@ -184,6 +187,8 @@ cd code_dataset && kaggle datasets version -p . -m "说明改了什么"
 | 09-18 00:55~03:10 | `hsi-yolo26m-prgb-full` v2（伪RGB 全量，batch 8，30 轮） | ✅ 2.2 小时 | 成为融合成员 C |
 | 09-18 03:30~08:30 | `hsi-yolo26m-prgb-full` v3（伪RGB 全量，**batch 3，60 轮**） | ✅ 5.0 小时（每轮 4.8 分钟） | 故意用不同超参做"差异化成员"；权重在 `outputs/prgb-full-b3e60/` |
 | 09-18 08:59~11:37 | `hsi-yolo26m-prgb368-full`（**波段 3/6/8** 伪RGB 全量，batch 8，30 轮） | ✅ 2.55 小时 | 新数据类型；`--data pseudo_rgb:3,6,8` |
+| 09-21 | `hsi-yolo26m-ablation` v2（普通 HSI16，fixed 2400/600，45 轮） | ✅ 3.09 小时；最佳/最终 `0.69899` | 比同规格 e30 低 `0.00244`，门禁失败；36,080 detections 本地 checker 通过；无比赛 Submit |
+| 09-21 | `hsi-yolo26m-phase-ablation` v1（phase-aware HSI16，fixed 2400/600，30 轮） | ✅ 2.50 小时；最佳/最终 `0.69935` | phase-aware bilinear v1，长边 1024；数据准备 21.8 分钟；batch 8/workers 2/device 0；38,304 detections 本地 checker 通过；低于 `0.70443` 门禁；无比赛 Submit |
 
 ## 冒烟测试结果（2026-09-17，yolo26m，1 轮）
 

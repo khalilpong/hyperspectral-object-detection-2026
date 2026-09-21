@@ -28,19 +28,21 @@
 - 当前合规最佳 `submissions/submission_single_m_hsi16_ms7_f074_sg0125.csv` 已成功提交：同一 YOLO26m checkpoint 七尺度，`fusion_iou=0.74`、`support_gain=0.125`，Public `0.63072`；ref `56392305`，98,556 detections，SHA-256 `E6F5BC18...2CB48E`。它只比前一版 `f0.70` 的 `0.63066` 高 `+0.00006`，说明当前 checkpoint 后处理已接近饱和。
 - zero-init fixed split 最佳 `0.69690`，object-crop fixed split `0.69772`；两者均低于旧同规格 `0.70143` 和门槛 `0.70443`，已否决，不跑全量、不提交。
 - SpectralStem 本地链路门禁已通过，私有 fixed 2400/600 消融也已正常完成，但标准 full-val 最佳/最终仅 `0.69930`，低于旧同规格 `0.70143` 和门槛 `0.70443`。该路线已否决：不跑全量、不上传其测试 CSV。
+- phase-aware bilinear v1 私有 Kernel `zephyrpong/hsi-yolo26m-phase-ablation` version 1 已完成：固定 2400/600，唯一变量是保留 4×4 物理 phase 并按宽高比重建到长边 1024；最佳/最终 epoch 30 为 `0.69935`，低于普通同规格 `0.70143` 和门槛 `0.70443`，已否决。38,304 条测试检测仅通过本地 checker，无比赛 Submit。
 - 显式 horizontal-flip-only 已完成同 checkpoint 固定划分验证：cache control 通过，但最佳七尺度+flip 仅 `0.70587796`，相对 supported-full 只增 `+0.00016978 < +0.001`，已否决，不生成或提交候选。
 - 普通 HSI16 YOLO26m 延长到 45 轮的 fixed 2400/600 消融已完成：最佳/最终 epoch 45 仅 `0.69899`，比 e30 的 `0.70143` 低 `0.00244`，比 `0.70443` 门槛低 `0.00544`。不启动 full-data e45，不上传其测试 CSV。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
-- Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 本次又使用约 3 小时。启动任何新训练前先实时复核余额。
+- Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 使用约 3.1 小时，phase-aware fixed split 又使用约 2.5 小时。启动任何新训练前先实时复核余额。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. e45 fixed split 已以 `0.69899 < 0.70443` 结束并否决；不要启动 full-data e45，也不要上传其测试 CSV。
-2. Horizontal-flip-only 已完成但未过 `+0.001` 门禁；不要重复推理、生成正式候选或提交。
-3. 当前没有正在运行或已授权的新训练；温和 `cls_pw`、random-affine `scale` 或同规格新 seed 只能先做单变量 fixed split，启动前说明 GPU 成本并征得用户确认。
-4. 继续扫 fusion/NMS、zero-init、object-crop、SpectralStem、e45、horizontal-flip-only 和旧 checkpoint tile TTA 均不再投入。
-5. 对任何新候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
+1. phase-aware fixed split 已以 `0.69935 < 0.70443` 结束并否决；不要启动 full-data phase-aware 训练，也不要上传其测试 CSV。
+2. e45 fixed split 已以 `0.69899 < 0.70443` 结束并否决；不要启动 full-data e45，也不要上传其测试 CSV。
+3. Horizontal-flip-only 已完成但未过 `+0.001` 门禁；不要重复推理、生成正式候选或提交。
+4. 当前没有正在运行或已授权的新训练；温和 `cls_pw`、random-affine `scale` 或同规格新 seed 只能先做单变量 fixed split，启动前说明 GPU 成本并征得用户确认。
+5. 继续扫 fusion/NMS、zero-init、object-crop、SpectralStem、phase-aware HSI16、e45、horizontal-flip-only 和旧 checkpoint tile TTA 均不再投入。
+6. 对任何新候选重新核对哈希、格式和额度；最终 Submit 前让我确认。
 
 **很重要的方法论（这是这个项目用分数换来的）**：
 - 比赛提交始终只用一个训练 checkpoint；同一 checkpoint 的多尺度/TTA可以融合，不同 checkpoint 的输出不能合并。

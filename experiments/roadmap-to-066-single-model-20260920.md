@@ -2,7 +2,7 @@
 
 ## 结论先行
 
-当前奖项合规的 Public 最佳是 `0.63072`，目标 `0.66` 仍差 `0.02928`。这是一次显著跃升，不能承诺一定达到。`fusion_iou 0.70 -> 0.74` 的最后一次受控后处理检查只带来 Public `+0.00006`；随后显式 horizontal-flip-only 和 YOLO26m 延长到 45 轮也都未过门禁。低成本推理与单纯延长训练已基本榨干，下一条主线若继续，必须是新的单模型训练变量，并继续用固定 2400/600 门禁控制 GPU 成本。
+当前奖项合规的 Public 最佳是 `0.63072`，目标 `0.66` 仍差 `0.02928`。这是一次显著跃升，不能承诺一定达到。`fusion_iou 0.70 -> 0.74` 的最后一次受控后处理检查只带来 Public `+0.00006`；随后显式 horizontal-flip-only、YOLO26m 延长到 45 轮和 phase-aware HSI16 输入重建也都未过门禁。低成本推理、单纯延长训练和这条 phase-aware 输入路线均已榨干，下一条主线若继续，必须是新的单模型训练变量，并继续用固定 2400/600 门禁控制 GPU 成本。
 
 执行顺序：
 
@@ -12,7 +12,8 @@
 4. `SpectralStem 16→3→YOLO26m` 的本地链路通过，但 fixed split 最佳/最终仅 `0.69930 < 0.70443`，已否决且不跑全量；
 5. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 仅比 supported-full 高 `+0.00016978 < +0.001`，已否决；
 6. 同规格 YOLO26m 45 轮 fixed split 已完成：最佳/最终 `0.69899 < 0.70443`，不启动全量训练；
-7. 当前没有正在运行或已授权的新训练，任何新 GPU 运行和 Kaggle Submit 仍需单独确认。
+7. phase-aware bilinear v1 fixed split 已完成：最佳/最终 `0.69935 < 0.70443`，较普通同规格 e30 低 `0.00208`，不启动全量训练；
+8. 当前没有正在运行或已授权的新训练，任何新 GPU 运行和 Kaggle Submit 仍需单独确认。
 
 ## 合规边界（事实）
 
@@ -47,7 +48,7 @@
 
 ### 已否定方向
 
-本项目已有实测负结果：`imgsz=1280`、训练期 multi-scale、P2 head、close-mosaic=20、box loss=10、P1–P99、伪标签、YOLO26l、SpectralStem、horizontal-flip-only，以及同规格 YOLO26m 单纯延长到 45 轮。它们不应在截止前重复消耗 GPU。详见 [HANDOFF.md](../HANDOFF.md) 与 [experiments.csv](experiments.csv)。
+本项目已有实测负结果：`imgsz=1280`、训练期 multi-scale、P2 head、close-mosaic=20、box loss=10、P1–P99、伪标签、YOLO26l、SpectralStem、phase-aware HSI16、horizontal-flip-only，以及同规格 YOLO26m 单纯延长到 45 轮。它们不应在截止前重复消耗 GPU。详见 [HANDOFF.md](../HANDOFF.md) 与 [experiments.csv](experiments.csv)。
 
 ## 已实现的对象裁剪
 
@@ -94,6 +95,14 @@
 - 类别层面 `car +0.014`、`people +0.012`，但 `stone_block -0.048`、`orange -0.015`、`car_toy -0.012`。这支持“粗召回略好、严格 IoU 定位未改善”的解释，不支持全量训练。
 - 生成的 1000 图测试 CSV 通过本地结构校验（44,367 detections），但这不是 Public 分数，也没有上传比赛。
 - `best.pt` SHA-256：`E629E810103CB703BB97EFA110FD6382425A9CAF8337E2A9CB38348281C269B0`；`last.pt` SHA-256：`7AC65DCAC5D1439E3C1667E0E10A8F00737670FABB79AF7243E3745A8D86970D`。两者均恢复出 `channels=16` 与一致的 stem metadata。
+
+### Phase-aware HSI16 结果：否决
+
+- 私有 Kernel `zephyrpong/hsi-yolo26m-phase-ablation` version 1 正常完成；fixed 2400/600，唯一训练变量是输入表示：保留 4×4 snapshot mosaic 的物理 row/column phase，按 phase-aware bilinear v1 重建到保持宽高比且长边 1024 的 16 通道 NPY。
+- 16 通道顺序、同一 manifest、标签、seed 2026 与 native-cube shared P0.5–P99.5 uint8 编码保持不变；random 首层初始化，关闭 SpectralStem、object crops 与 tile inference。
+- 训练 return code 0，batch 8/workers 2/device 0，无 CUDA OOM 或 shared-memory 错误。最佳与最终均为 epoch 30：`mAP50-95=0.69935`、`mAP50=0.95838`。
+- 相对普通同规格 e30，mAP50 提升 `+0.00511`，但 mAP50-95 下降 `-0.00208`；相对全量门槛仍差 `0.00508`。这说明粗召回改善没有转化为严格 IoU 定位提升。
+- 1000 图测试 CSV 仅通过本地结构校验（38,304 detections），没有上传比赛，也没有 Public 分数。完整合同、哈希和逐类变化见 [phase-aware-hsi16-20260921.md](phase-aware-hsi16-20260921.md)。
 
 ### Horizontal-flip-only 结果：否决
 
@@ -146,6 +155,7 @@
 | object-crop fixed split | 标准 600 full-val mAP50-95 `>=0.70443` | `0.69772`，否决 | 停止该训练路线 |
 | tile TTA | 相对同 checkpoint、同 evaluator 的 full baseline `>=+0.003`，且 cache control 通过 | `-0.00807`，否决 | 不用于全量/提交 |
 | SpectralStem fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69930`，否决 | 不跑全量、不提交测试 CSV |
+| phase-aware HSI16 fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69935`，否决 | 不跑全量、不提交测试 CSV |
 | horizontal-flip-only | cache control 通过，且相对 supported-full mAP50-95 `>=+0.001` | `0.70587796`，仅 `+0.00016978`，否决 | 不生成正式候选、不提交 |
 | YOLO26m e45 fixed split | 标准 full-val mAP50-95 `>=0.70443` | `0.69899`，否决 | 不跑 full-data e45 |
 | full training | status success、权重和日志完整、单 checkpoint | 无新候选 | 不生成正式候选 |
@@ -154,7 +164,7 @@
 
 ## 备选路线及优先级
 
-1. `SpectralStem`、horizontal-flip-only 与同规格 e45 均已被固定划分门禁否决，不再投入全量训练或提交。
+1. `SpectralStem`、phase-aware HSI16、horizontal-flip-only 与同规格 e45 均已被固定划分门禁否决，不再投入全量训练或提交。
 2. 温和 `cls_pw=0.25/0.5`：Ultralytics 8.4.147 原生支持，工程风险小，但只影响分类 BCE，未直接解决定位主因；若要运行仍需新的 GPU 授权。
 3. 新 seed 的同规格 YOLO26m：只用于估计固定划分方差，没有正向增益先验；启动前必须重新取得 GPU 授权。
 4. 温和 random-affine `scale` 单变量：不同于已否决的 training-time multi-scale，尚未做固定划分对照，但收益不确定，且不能与其它变量同时改。
