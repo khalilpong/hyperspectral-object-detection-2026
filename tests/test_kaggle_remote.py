@@ -412,6 +412,48 @@ def test_make_kernel_renders_isolated_degrees_variant(tmp_path: Path, monkeypatc
     assert metadata["is_private"] is True
 
 
+def test_make_kernel_renders_isolated_custom_pseudo_rgb_band_order(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--data",
+            "pseudo_rgb:13,8,5",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_prgb1385"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_prgb1385_e30"' in rendered
+    assert '"DATA": "pseudo_rgb:13,8,5"' in rendered
+    assert '"DEGREES": 0.0' in rendered
+    assert '"SCALE": 0.5' in rendered
+    assert '"DFL": 1.5' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-prgb1385-ablation"
+    assert metadata["is_private"] is True
+    assert metadata["dataset_sources"] == [
+        "zephyrpong/hsi-detection-code",
+        "zephyrpong/hsi-competition-raw",
+    ]
+
+
 def test_make_kernel_renders_single_checkpoint_supported_multiscale_full_candidate(
     tmp_path: Path, monkeypatch
 ) -> None:

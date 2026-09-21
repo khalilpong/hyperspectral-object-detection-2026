@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 06:05（北京时间）
+> 最后更新：2026-09-22 06:14（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -26,6 +26,7 @@
 - YOLO26m `degrees=5` fixed-split 单变量作业已启动：代码与远程生成器共 `122` 项测试通过，真实 RT-DETR-L 构造也验证了后备 `num_denoising=200` 控制确实落在 decoder；私有代码数据集新版本 `ready`。`zephyrpong/hsi-yolo26m-deg5-ablation` version 1 于 05:29 推送并实时核验为 `RUNNING`。该作业保持普通 HSI16、2400/600、30 epochs、1024、batch 8 fallback、seed 2026、`scale=0.5`、`dfl=1.5`，唯一训练变量为 random-affine `degrees 0→5`；仍须达到 `0.70443` 才能跑 full-data，无 Competition Submit。
 - Phase 2/ranking-set 风险已于 06:00 用 Kaggle CLI 完整枚举 36 页官方文件清单：当前仍恰好 7,003 项（`data_train` 6,000、`data_test` 1,000、另外 3 个根文件），没有 ranking 路径或 2026-08-22 之后的新文件；现有 1,000-test 契约仍正确，但 ranking set 真正发布后必须重新核验。
 - 公开 `YOLO11m + [13,8,5]` Notebook 显示的 `0.7394` 已证实存在严重重复泄漏：其双 `**` glob 把 3,000 张训练 PNG 列成 6,000 条，实际 844 张 val 中有 788 张（93.36%）也在 train，test 也从 1,000 重复为 2,000 条。该分数不得与 fixed 2400/600 门禁比较，也不据此启动 full-data；完整证据见 `experiments/latest-public-strategy-research-20260922.md`。
+- `[13,8,5]` 伪 RGB 后备 fixed 实验已预注册并生成独立私有本地包 `kernel_ablation_prgb1385`；全仓 `123 passed`，生成 runner 与主 runner 只差预期 CONFIG。该包**未上传、未运行**，只有当前两个作业审计后仍值得投入时才考虑推送，门禁仍为 `0.70443`。
 
 ## 👉 接手后第一件事
 
@@ -51,7 +52,7 @@
 
 1. 等待并核验正在运行的 RT-DETR-L HSI16 与 YOLO26m `degrees=5` 两个彼此独立的 fixed 2400/600 作业；不要重复推送。
 2. fixed 完成后用 `scripts/check_fixed_split_gate.py` 审计精确架构和变量：RT-DETR 要求 `--architecture rtdetr --expected-rtdetr-num-denoising 100`，YOLO 要求 `--architecture yolo --expected-dfl 1.5 --expected-degrees 5`；两者门禁均为 `0.70443`。低于门禁立即否决，达到门禁才允许生成该单 checkpoint 的 full-data 作业。
-3. 公开 Notebook 的 `0.7394` 是重复图泄漏，不复现其随机 split。`[13,8,5]` 仅保留为两个当前作业均失败后的低优先级 YOLO26m fixed 单变量；此前 `[5,8,13]` fixed 只有 `0.69726`，不得因公开泄漏分数直接跑 full-data。
+3. 公开 Notebook 的 `0.7394` 是重复图泄漏，不复现其随机 split。`[13,8,5]` 仅保留为两个当前作业均失败后的低优先级 YOLO26m fixed 单变量；独立私有包已在本地生成但未推送，此前 `[5,8,13]` fixed 只有 `0.69726`，不得因公开泄漏分数直接跑 full-data。
 4. `dfl=2.0/2.5`、zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
 5. 同规格新 seed 与 `cls_pw=0.5` 的先验都弱于当前 RT-DETR 架构门禁；不抢在当前作业前启动。
 6. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
@@ -121,6 +122,7 @@ kaggle kernels status zephyrpong/<slug>
 | `hsi-rtdetr-l-smoke` | 私有 Kernel 版本 1 `COMPLETE`；单 T4 batch 2、1 epoch、1024、HSI16，预训练/16 通道迁移/训练/重载/NPY 推理/checker 全通过；仅是远程全链路门禁，不是 fixed-split 成绩 |
 | `hsi-rtdetr-l-ablation` | 私有 Kernel 版本 1 于 04:43 推送，04:44 为 `RUNNING`；单 RT-DETR-L checkpoint、fixed 2400/600、30 epoch、1024、batch `2→1` 降级；门槛 `0.70443`，无 Competition Submit |
 | `hsi-yolo26m-deg5-ablation` | 私有 Kernel 版本 1 于 05:29 推送并实时核验为 `RUNNING`；单 YOLO26m checkpoint、fixed 2400/600、30 epoch、1024、random-affine `degrees=5`，其余定位/增强参数保持普通基线；门槛 `0.70443`，无 Competition Submit |
+| `hsi-yolo26m-prgb1385-ablation` | 本地私有包已生成，`pseudo_rgb:13,8,5`、YOLO26m、fixed 2400/600、e30；尚未 `kaggle kernels push`，不是远端作业；预注册见 `experiments/yolo26m-pseudo-rgb-1385-prereg-20260922.md` |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 
