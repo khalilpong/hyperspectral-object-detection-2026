@@ -22,6 +22,8 @@
         --cls-pw 0.25
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --dfl 2.0
+    python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
+        --box-iou-loss eiou
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -136,6 +138,8 @@ def main() -> None:
                         help="YOLO 训练 random-affine 最大绝对旋转角；0.0 为基线")
     parser.add_argument("--dfl", type=float, default=1.5,
                         help="Distribution Focal Loss gain；1.5 为 Ultralytics 基线")
+    parser.add_argument("--box-iou-loss", choices=("ciou", "eiou"), default="ciou",
+                        help="YOLO 边框重叠损失；ciou 为 Ultralytics 基线")
     parser.add_argument("--rtdetr-num-denoising", type=int, default=100,
                         help="RT-DETR 训练 denoising query 数；100 为 Ultralytics 基线")
     parser.add_argument("--fusion-iou", type=float, default=0.70,
@@ -199,6 +203,8 @@ def main() -> None:
             parser.error("RT-DETR 远程路径不使用 YOLO --degrees")
         if args.dfl != 1.5:
             parser.error("RT-DETR 不使用 YOLO DFL gain；--dfl 必须保持默认 1.5")
+        if args.box_iou_loss != "ciou":
+            parser.error("RT-DETR 不使用 YOLO --box-iou-loss；必须保持 ciou")
         if args.object_crops or args.tile_inference:
             parser.error("RT-DETR smoke/fixed 路径暂不支持 object crops 或 tile inference")
     elif args.rtdetr_num_denoising != 100:
@@ -228,6 +234,7 @@ def main() -> None:
     scale_tag = "" if args.scale == 0.5 else f"_scale{_fraction_tag(args.scale)}"
     degrees_tag = "" if args.degrees == 0.0 else f"_deg{_compact_decimal_tag(args.degrees)}"
     dfl_tag = "" if args.dfl == 1.5 else f"_dfl{_fraction_tag(args.dfl)}"
+    box_iou_tag = "" if args.box_iou_loss == "ciou" else f"_{args.box_iou_loss}"
     denoising_tag = (
         ""
         if args.rtdetr_num_denoising == 100
@@ -243,6 +250,7 @@ def main() -> None:
         + scale_tag
         + degrees_tag
         + dfl_tag
+        + box_iou_tag
         + denoising_tag
         + crop_tag
         + tile_tag
@@ -276,6 +284,7 @@ def main() -> None:
         f'    "SCALE": {args.scale!r},\n'
         f'    "DEGREES": {args.degrees!r},\n'
         f'    "DFL": {args.dfl!r},\n'
+        f'    "BOX_IOU_LOSS": "{args.box_iou_loss}",\n'
         f'    "RTDETR_NUM_DENOISING": {args.rtdetr_num_denoising},\n'
         f'    "FUSION_IOU": {args.fusion_iou!r},\n'
         f'    "SUPPORT_GAIN": {args.support_gain!r},\n'
@@ -326,6 +335,7 @@ def main() -> None:
           f"scale={args.scale:g} "
           f"degrees={args.degrees:g} "
           f"dfl={args.dfl:g} "
+          f"box_iou_loss={args.box_iou_loss} "
           f"rtdetr_num_denoising={args.rtdetr_num_denoising} "
           f"fusion_iou={args.fusion_iou:g} support_gain={args.support_gain:g} "
           f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "

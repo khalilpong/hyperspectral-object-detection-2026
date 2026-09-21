@@ -35,6 +35,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--warmup-epochs", type=float)
     parser.add_argument("--box", type=float)
     parser.add_argument(
+        "--box-iou-loss",
+        choices=("ciou", "eiou"),
+        help=(
+            "Bounding-box overlap loss. Omit for the Ultralytics CIoU baseline; "
+            "EIoU changes only BboxLoss and leaves assignment/DFL/inference unchanged."
+        ),
+    )
+    parser.add_argument(
         "--dfl",
         type=float,
         help="Distribution Focal Loss gain for box-edge distance supervision.",
@@ -99,6 +107,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
     if args.spectral_stem and args.extra_channel_init is not None:
         parser.error("--spectral-stem and --extra-channel-init are mutually exclusive")
+    if args.spectral_stem and args.box_iou_loss == "eiou":
+        parser.error("--spectral-stem and --box-iou-loss eiou are separate experimental variants")
     if args.resume and args.spectral_stem:
         parser.error("--resume recovers SpectralStem from the checkpoint; do not pass --spectral-stem")
     if args.cls_pw is not None and not 0.0 <= args.cls_pw <= 1.0:
@@ -124,6 +134,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 "lrf",
                 "warmup_epochs",
                 "box",
+                "box_iou_loss",
                 "dfl",
                 "cls_pw",
                 "hsv_h",
@@ -256,11 +267,25 @@ def zero_extra_input_channel_weights(trainer: object, base_channels: int = 3) ->
 def main(argv: Sequence[str] | None = None) -> None:
     from ultralytics import YOLO
 
+    from hsi_detection.box_loss import (
+        EIoUDetectionTrainer,
+        checkpoint_box_iou_loss,
+        install_box_iou_loss,
+        record_box_iou_loss,
+    )
+
     args = parse_args(argv)
     model_source = str(args.resume.resolve()) if args.resume else (args.model or "yolo26n.pt")
     model = YOLO(model_source)
     if args.load_weights is not None:
         model.load(str(args.load_weights.resolve()))
+    box_iou_loss = (
+        checkpoint_box_iou_loss(model.model)
+        if args.resume
+        else (args.box_iou_loss or "ciou")
+    )
+    record_box_iou_loss(model.model, box_iou_loss)
+    install_box_iou_loss(box_iou_loss)
     if args.extra_channel_init == "zero":
         model.add_callback("on_pretrain_routine_end", zero_extra_input_channel_weights)
     from hsi_detection.spectral_stem import SpectralDetectionTrainer, has_spectral_stem
@@ -269,6 +294,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     train_kwargs = build_train_kwargs(args)
     if use_spectral_trainer:
         model.train(trainer=SpectralDetectionTrainer, **train_kwargs)
+    elif box_iou_loss == "eiou":
+        model.train(trainer=EIoUDetectionTrainer, **train_kwargs)
     else:
         model.train(**train_kwargs)
 

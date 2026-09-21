@@ -378,6 +378,41 @@ def test_make_kernel_renders_isolated_dfl_variant(tmp_path: Path, monkeypatch) -
     ]
 
 
+def test_make_kernel_renders_isolated_eiou_variant(tmp_path: Path, monkeypatch) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--box-iou-loss",
+            "eiou",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_eiou"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_eiou_e30"' in rendered
+    assert '"BOX_IOU_LOSS": "eiou"' in rendered
+    assert '"DFL": 1.5' in rendered
+    assert '"DEGREES": 0.0' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-eiou-ablation"
+    assert metadata["is_private"] is True
+
+
 def test_make_kernel_renders_isolated_degrees_variant(tmp_path: Path, monkeypatch) -> None:
     module = _load_make_kernel()
     module.HERE = tmp_path
@@ -560,7 +595,27 @@ def test_remote_runner_builds_rtdetr_command_without_yolo_only_gains(
     assert "--cls-pw" not in command
     assert "--scale" not in command
     assert "--degrees" not in command
+    assert "--box-iou-loss" not in command
     assert "--no-val" not in command
+
+
+def test_remote_runner_builds_yolo_command_with_box_iou_loss(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_runner()
+    monkeypatch.setattr(module, "ARCHITECTURE", "yolo")
+    monkeypatch.setattr(module, "BOX_IOU_LOSS", "eiou")
+
+    command = module.build_training_command(
+        tmp_path / "yolo26m.pt",
+        tmp_path / "dataset.yaml",
+        batch=8,
+        device="0",
+        workers=2,
+    )
+
+    assert command[1] == "scripts/train_baseline.py"
+    assert command[command.index("--box-iou-loss") + 1] == "eiou"
 
 
 @pytest.mark.parametrize(
@@ -571,6 +626,7 @@ def test_remote_runner_builds_rtdetr_command_without_yolo_only_gains(
         ["--spectral-stem"],
         ["--scale", "0.3"],
         ["--degrees", "5"],
+        ["--box-iou-loss", "eiou"],
         ["--data", "hsi16_phase"],
         ["--object-crops"],
         ["--tile-inference"],

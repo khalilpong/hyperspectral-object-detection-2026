@@ -40,6 +40,7 @@ def audit_fixed_split(
     expected_model: str | None = None,
     expected_dfl: float | None = None,
     expected_degrees: float = 0.0,
+    expected_box_iou_loss: str = "ciou",
     expected_extra_channel_init: str = "random",
     expected_rtdetr_num_denoising: int = 100,
     gate: float,
@@ -62,6 +63,10 @@ def audit_fixed_split(
         raise ValueError("RT-DETR does not use the YOLO expected_degrees contract")
     if expected_architecture == "yolo" and expected_rtdetr_num_denoising != 100:
         raise ValueError("YOLO does not use the RT-DETR denoising-query contract")
+    if expected_box_iou_loss not in {"ciou", "eiou"}:
+        raise ValueError("expected_box_iou_loss must be either 'ciou' or 'eiou'")
+    if expected_architecture == "rtdetr" and expected_box_iou_loss != "ciou":
+        raise ValueError("RT-DETR does not use the YOLO box-IoU-loss contract")
     if expected_extra_channel_init not in {"random", "zero"}:
         raise ValueError(
             "expected_extra_channel_init must be either 'random' or 'zero'"
@@ -78,6 +83,7 @@ def audit_fixed_split(
     # their effective Ultralytics defaults were degrees=0 and nd=100.
     config.setdefault("DEGREES", 0.0)
     config.setdefault("RTDETR_NUM_DENOISING", 100)
+    config.setdefault("BOX_IOU_LOSS", "ciou")
     observed_architecture = config.get("ARCHITECTURE", "yolo")
     if observed_architecture != expected_architecture:
         raise ValueError(
@@ -102,6 +108,7 @@ def audit_fixed_split(
             "SCALE": 0.5,
             "DEGREES": expected_degrees,
             "DFL": 1.5 if expected_architecture == "rtdetr" else expected_dfl,
+            "BOX_IOU_LOSS": expected_box_iou_loss,
             "RTDETR_NUM_DENOISING": expected_rtdetr_num_denoising,
             "PHASE_TARGET_LONG_EDGE": 1024,
             "OBJECT_CROPS": False,
@@ -163,6 +170,7 @@ def audit_fixed_split(
         contract["expected_dfl"] = expected_dfl
     if expected_architecture == "yolo":
         contract["expected_degrees"] = expected_degrees
+        contract["expected_box_iou_loss"] = expected_box_iou_loss
     else:
         contract["expected_rtdetr_num_denoising"] = expected_rtdetr_num_denoising
     return {
@@ -195,6 +203,11 @@ def main() -> None:
     parser.add_argument("--expected-dfl", type=float)
     parser.add_argument("--expected-degrees", type=float, default=0.0)
     parser.add_argument(
+        "--expected-box-iou-loss",
+        choices=("ciou", "eiou"),
+        default="ciou",
+    )
+    parser.add_argument(
         "--expected-extra-channel-init",
         choices=("random", "zero"),
         default="random",
@@ -215,6 +228,7 @@ def main() -> None:
         expected_model=args.model,
         expected_dfl=args.expected_dfl,
         expected_degrees=args.expected_degrees,
+        expected_box_iou_loss=args.expected_box_iou_loss,
         expected_extra_channel_init=args.expected_extra_channel_init,
         expected_rtdetr_num_denoising=args.expected_rtdetr_num_denoising,
         gate=args.gate,

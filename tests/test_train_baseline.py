@@ -30,6 +30,7 @@ def test_new_run_keeps_documented_defaults() -> None:
     assert "cls_pw" not in kwargs
     assert "dfl" not in kwargs
     assert "degrees" not in kwargs
+    assert args.box_iou_loss is None
 
 
 def test_resume_does_not_apply_fresh_run_defaults() -> None:
@@ -165,6 +166,25 @@ def test_dfl_validates_range_and_cannot_override_resume() -> None:
         train_baseline.parse_args(
             ["--resume", "runs/example/weights/last.pt", "--dfl", "2.0"]
         )
+
+
+def test_box_iou_loss_is_opt_in_and_cannot_override_resume() -> None:
+    assert train_baseline.parse_args(["--box-iou-loss", "eiou"]).box_iou_loss == "eiou"
+
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            [
+                "--resume",
+                "runs/example/weights/last.pt",
+                "--box-iou-loss",
+                "eiou",
+            ]
+        )
+
+
+def test_eiou_rejects_spectral_stem_multi_variable_variant() -> None:
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(["--spectral-stem", "--box-iou-loss", "eiou"])
 
 
 def test_degrees_validates_range_and_cannot_override_resume() -> None:

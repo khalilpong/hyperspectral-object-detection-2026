@@ -19,6 +19,7 @@ def _write_run(
     degrees: float | None = None,
     extra_channel_init: str = "random",
     num_denoising: int | None = None,
+    box_iou_loss: str | None = None,
 ) -> tuple[Path, Path]:
     status = {
         "config": {
@@ -55,6 +56,8 @@ def _write_run(
         status["config"]["DEGREES"] = degrees
     if num_denoising is not None:
         status["config"]["RTDETR_NUM_DENOISING"] = num_denoising
+    if box_iou_loss is not None:
+        status["config"]["BOX_IOU_LOSS"] = box_iou_loss
     status_path = tmp_path / "status.json"
     status_path.write_text(json.dumps(status), encoding="utf-8")
 
@@ -140,6 +143,34 @@ def test_audit_fixed_split_checks_yolo_degrees_variant(tmp_path: Path) -> None:
             results_path=results,
             expected_dfl=1.5,
             expected_degrees=3.0,
+            gate=0.70443,
+        )
+
+
+def test_audit_fixed_split_checks_yolo_eiou_variant(tmp_path: Path) -> None:
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        box_iou_loss="eiou",
+    )
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_dfl=1.5,
+        expected_box_iou_loss="eiou",
+        gate=0.70443,
+    )
+
+    assert report["contract"]["expected_box_iou_loss"] == "eiou"
+    assert report["passes_full_data_gate"] is True
+
+    with pytest.raises(ValueError, match="config mismatch"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_dfl=1.5,
             gate=0.70443,
         )
 
