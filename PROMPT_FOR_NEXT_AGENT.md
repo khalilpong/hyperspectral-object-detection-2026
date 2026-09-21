@@ -37,6 +37,7 @@
 - RT-DETR-L HSI16 本地全链 vertical slice、远程架构分支和当前全仓 `122` 项测试均已通过；私有代码数据集新版本已 `ready`。独立 `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 04:29 `COMPLETE`：单 T4 batch 2、官方预训练和 16 通道迁移、1 epoch、重载、NPY 推理与 checker 全通过。fixed 2400/600 的 `zephyrpong/hsi-rtdetr-l-ablation` version 1 已于 04:43 推送，04:44 状态为 `RUNNING`；仍不是正式候选或 Public 成绩。
 - YOLO26m 小角度旋转单变量已进入 fixed 门禁：训练脚本、远程 runner、生成器和门禁器均已支持并验证 `degrees`，全仓 `122` 项测试通过；私有 `zephyrpong/hsi-yolo26m-deg5-ablation` version 1 于 05:29 推送并实时核验为 `RUNNING`。普通 HSI16、fixed 2400/600、30 epochs、1024、batch 8 fallback、seed 2026、`scale=0.5`、`dfl=1.5` 不变，唯一变量为 `degrees 0→5`；门槛仍为 `0.70443`，无 Competition Submit。
 - 两个互不混用的后备 fixed 包已在本地生成且全仓 `124 passed`，都未上传：YOLO26m `pseudo_rgb:13,8,5` 为 `kernel_ablation_prgb1385`；RT-DETR-L `extra_channel_init=zero` 为 `kernel_ablation_rtdetr_xczero`，门禁器可用 `--expected-extra-channel-init zero` 精确校验。degrees=5 失败时才考虑前者，random-init RT-DETR 失败时才考虑后者；各自仍受 `0.70443` 门禁约束。
+- YOLO26l/P2/1280 已有负结果，不重复；唯一未测的容量候选 YOLO26x 已生成最低优先级私有 fixed 包 `kernel_ablation_yolo26x`（slug `zephyrpong/hsi-yolo26x-ablation`），只改模型 m→x，attempts `2:2,1:2,1:0`，未上传。只有 degrees=5 与 `[13,8,5]` 均失败且额度仍足时才运行一次。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
 - Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 使用约 3.1 小时，phase-aware fixed split 使用约 2.5 小时，`cls_pw=0.25` fixed split 使用约 2.29 小时，`scale=0.3` fixed split 使用约 2.06 小时。启动任何新训练前先实时复核余额。
@@ -47,7 +48,8 @@
 2. 两个 fixed 均按 `0.70443` 门禁；RT-DETR 审计 `num_denoising=100`，YOLO 审计 `dfl=1.5/degrees=5`。低于门禁立即否决，达到门禁才允许生成对应单 checkpoint full-data 作业，且两个 checkpoint 绝不能融合。
 3. 若 degrees=5 失败，可在空出的远端槽位推送一次已预注册的 `[13,8,5]` fixed；若 random-init RT-DETR 失败，可推送一次已预注册的 RT-DETR zero-init fixed。不要把后者与已否决的 YOLO26m zero-init 混为一谈，也不要并行重复同一 slug。
 4. `dfl=2.0/2.5`、scale、`cls_pw`、phase-aware、e45、horizontal-flip、YOLO26m zero-init、object-crop、SpectralStem、tile TTA、尺度来源/权重和继续细扫后处理均已否决，不重复投入。
-5. 对任何新候选重新核对哈希、格式和额度；最终 Competition Submit 前让我确认。
+5. 若 degrees=5 与 `[13,8,5]` 都失败，可在额度允许时运行一次已预注册的 YOLO26x fixed；门禁器显式使用 `--model yolo26x.pt`。不要重跑 YOLO26l、P2 或 1280。
+6. 对任何新候选重新核对哈希、格式和额度；最终 Competition Submit 前让我确认。
 
 **很重要的方法论（这是这个项目用分数换来的）**：
 - 比赛提交始终只用一个训练 checkpoint；同一 checkpoint 的多尺度/TTA可以融合，不同 checkpoint 的输出不能合并。
