@@ -35,20 +35,20 @@
 - random-affine `scale=0.3` 私有 fixed 2400/600 消融已完成并否决：已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于门槛 `0.70443`。31,848 条测试检测仅通过本地 checker，无比赛 Submit/Public；不要启动其 full-data 训练或上传该 CSV。
 - `dfl=2.0/2.5` 两个独立单模型 fixed 2400/600 作业均已完成并否决：最佳/最终 `0.70165/0.70186`，虽略高于普通 e30 `0.70143`，但仍低于 `0.70443` 门禁；不要启动对应 full-data 或上传其测试 CSV，二者绝不能融合。
 - RT-DETR-L HSI16 本地全链 vertical slice、远程架构分支和当前全仓 `122` 项测试均已通过；私有代码数据集新版本已 `ready`。独立 `zephyrpong/hsi-rtdetr-l-smoke` version 1 已于 04:29 `COMPLETE`：单 T4 batch 2、官方预训练和 16 通道迁移、1 epoch、重载、NPY 推理与 checker 全通过。fixed 2400/600 的 `zephyrpong/hsi-rtdetr-l-ablation` version 1 已于 04:43 推送，04:44 状态为 `RUNNING`；仍不是正式候选或 Public 成绩。
-- YOLO26m 小角度旋转单变量已进入 fixed 门禁：训练脚本、远程 runner、生成器和门禁器均已支持并验证 `degrees`，全仓 `122` 项测试通过；私有 `zephyrpong/hsi-yolo26m-deg5-ablation` version 1 于 05:29 推送并实时核验为 `RUNNING`。普通 HSI16、fixed 2400/600、30 epochs、1024、batch 8 fallback、seed 2026、`scale=0.5`、`dfl=1.5` 不变，唯一变量为 `degrees 0→5`；门槛仍为 `0.70443`，无 Competition Submit。
+- YOLO26m 小角度旋转单变量已完成并否决：私有 `zephyrpong/hsi-yolo26m-deg5-ablation` version 1 的普通 HSI16 fixed 2400/600 合同审计通过，唯一变量为 `degrees 0→5`；最佳 epoch 29 `mAP50-95=0.68169`，最终 `0.68092`，比普通 e30 `0.70143` 低 `0.01974`，比门槛 `0.70443` 低 `0.02274`。不跑 full-data、不提交测试 CSV。
 - 两个互不混用的后备 fixed 包已在本地生成且全仓 `135 passed`，都未上传：YOLO26m `pseudo_rgb:13,8,5` 为 `kernel_ablation_prgb1385`；RT-DETR-L `extra_channel_init=zero` 为 `kernel_ablation_rtdetr_xczero`，门禁器可用 `--expected-extra-channel-init zero` 精确校验。EIoU 失败时才考虑前者，random-init RT-DETR 失败时才考虑后者；各自仍受 `0.70443` 门禁约束。
 - YOLO26l/P2/1280 已有负结果，不重复；唯一未测的容量候选 YOLO26x 已生成最低优先级私有 fixed 包 `kernel_ablation_yolo26x`（slug `zephyrpong/hsi-yolo26x-ablation`），只改模型 m→x，attempts `2:2,1:2,1:0`，未上传。只有 degrees=5、EIoU 与 `[13,8,5]` 均失败且额度仍足时才运行一次。
 - RT-DETR 的 COCO 类名别名没有足够语义依据，不做；已有 `num_denoising=200` 单变量私有 fixed 包 `kernel_ablation_rtdetr_nd200`（slug `zephyrpong/hsi-rtdetr-l-nd200-ablation`），未上传。只有 random 与 zero extra-channel RT-DETR 都失败后才运行一次。
-- YOLO26m EIoU 已预注册为更直接的严格定位后备：只替换 `BboxLoss` 的 CIoU，不改 assigner、DFL/L1、模型或推理；真实 16 通道 YOLO26m 单 batch forward/loss/backward finite，全仓 `135 passed`。私有代码数据集新版本已 `ready` 且远端清单含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou`（slug `zephyrpong/hsi-yolo26m-eiou-ablation`）尚未推送。degrees=5 失败后优先于 `[13,8,5]` 与 YOLO26x，只跑一次并按 `0.70443` 门禁。
+- YOLO26m EIoU 已预注册为更直接的严格定位后备：只替换 `BboxLoss` 的 CIoU，不改 assigner、DFL/L1、模型或推理；真实 16 通道 YOLO26m 单 batch forward/loss/backward finite，全仓 `135 passed`。私有代码数据集新版本已 `ready` 且远端清单含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou`（slug `zephyrpong/hsi-yolo26m-eiou-ablation`）已尝试 push 一次，但 Kaggle 在创建作业前因周 GPU 配额超限拒绝，远端没有运行版本。账户 07:52 显示 `32:33 / 30 hrs`；等当前 RT-DETR 结束和额度结算后只重试一次，按 `0.70443` 门禁。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
-- 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。
+- 提交额度：**每天 3 次**，北京时间 08:00 重置。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。当前 GPU 周额度页面显示 `32:33 / 30 hrs`；运行中的 RT-DETR 可能占用预留额度，待终态结算后再判断能否创建后备作业。
 - Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 使用约 3.1 小时，phase-aware fixed split 使用约 2.5 小时，`cls_pw=0.25` fixed split 使用约 2.29 小时，`scale=0.3` fixed split 使用约 2.06 小时。启动任何新训练前先实时复核余额。
 
 ### 建议你做的事（按优先级，每一步先告诉我再做）
 
-1. 只监控当前 `hsi-rtdetr-l-ablation` version 1 和 `hsi-yolo26m-deg5-ablation` version 1，不要重启或重复推送；完成后分别下载到独立目录，用架构感知门禁器核验精确配置、30 个 epoch、训练状态和哈希。
-2. 两个 fixed 均按 `0.70443` 门禁；RT-DETR 审计 `num_denoising=100`，YOLO 审计 `dfl=1.5/degrees=5`。低于门禁立即否决，达到门禁才允许生成对应单 checkpoint full-data 作业，且两个 checkpoint 绝不能融合。
-3. 若 degrees=5 失败，可在空出的远端槽位优先推送一次已预注册的 EIoU fixed；精确审计 `--expected-box-iou-loss eiou`。EIoU 失败后才排 `[13,8,5]`；若 random-init RT-DETR 失败，可独立推送一次 RT-DETR zero-init fixed。不要并行重复同一 slug。
+1. 只监控当前 `hsi-rtdetr-l-ablation` version 1，不要重启或重复推送；完成后下载到独立目录，用架构感知门禁器核验精确配置、30 个 epoch、训练状态和哈希。
+2. RT-DETR fixed 按 `0.70443` 门禁并审计 `num_denoising=100`。低于门禁立即否决，达到门禁才允许生成同配方单 checkpoint full-data 作业；绝不能与 YOLO 或其他 RT-DETR checkpoint 融合。
+3. `degrees=5` 已失败。等 GPU 配额可用且确认远端不存在 EIoU 版本后，只推送一次已预注册的 EIoU fixed，精确审计 `--expected-box-iou-loss eiou`。EIoU 失败后才排 `[13,8,5]`；若 random-init RT-DETR 失败，可在额度可用后独立推送一次 RT-DETR zero-init fixed。不要并行重复同一 slug。
 4. `dfl=2.0/2.5`、scale、`cls_pw`、phase-aware、e45、horizontal-flip、YOLO26m zero-init、object-crop、SpectralStem、tile TTA、尺度来源/权重和继续细扫后处理均已否决，不重复投入。
 5. 若 degrees=5、EIoU 与 `[13,8,5]` 都失败，可在额度允许时运行一次已预注册的 YOLO26x fixed；门禁器显式使用 `--model yolo26x.pt`。不要重跑 YOLO26l、P2 或 1280。
 6. 若 RT-DETR random 与 zero 都失败，可运行一次已预注册的 `num_denoising=200` fixed；门禁器显式使用 `--expected-rtdetr-num-denoising 200`，不要同时加类名别名。

@@ -24,15 +24,17 @@
 - 真实 `rtdetr-l.pt` 构造验证了后备 `num_denoising=200` 控制落在 16 通道目标模型 decoder，不是只改命令字符串；
 - 私有代码数据集新版本上传后状态为 `ready`；生成的 Kernel metadata 为 `is_private: true`。
 
-## 远程状态
+## 远程结果
 
-- Kernel：`zephyrpong/hsi-yolo26m-deg5-ablation`
-- version：`1`
-- 推送：2026-09-22 05:29（北京时间）
-- 05:29 实时状态：`RUNNING`
-- Competition Submit：无
+- Kernel：`zephyrpong/hsi-yolo26m-deg5-ablation` version 1；2026-09-22 05:29（北京时间）推送，07:45 前后完成；
+- 数据、模型和唯一变量合同均通过门禁器：普通 HSI16、fixed 2400/600、YOLO26m、30 epochs、1024、seed 2026、random extra-channel init、`scale=0.5`、`dfl=1.5`、`degrees=5`、CIoU；
+- 首个 `batch=8/workers=2/device=0` attempt 成功，训练 return code 0；无 CUDA OOM 或 shared-memory 错误；训练约 7,223 秒，全流程约 7,618 秒；
+- 最佳 epoch 29：`mAP50-95=0.68169`、`mAP50=0.95954`；最终 epoch 30：`mAP50-95=0.68092`；
+- 相对普通同规格 e30 基线 `0.70143` 下降 `0.01974`，相对 full-data 门槛 `0.70443` 低 `0.02274`；
+- fresh checkpoint reload 与 1000 张 test NPY 推理通过，结构 checker 验证 36,566 条检测、1000/1000 图像；
+- 结论：**门禁失败并否决**。不跑对应 full-data，不上传生成的测试 CSV，无 Competition Submit。
 
-完成后下载到 `kaggle_remote/outputs/degrees5_ablation`，使用：
+门禁复核命令：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\check_fixed_split_gate.py `
@@ -40,5 +42,13 @@
   --results kaggle_remote\outputs\degrees5_ablation\kaggle_ablation_yolo26m_deg5_e30\results.csv `
   --architecture yolo --expected-dfl 1.5 --expected-degrees 5 `
   --gate 0.70443 `
-  --output artifacts\gates\yolo26m_deg5_fixed_20260922.json
+  --output artifacts\gates\degrees5_fixed_gate_20260922.json
 ```
+
+审计哈希：
+
+- `status.json`：`6B495198231FF37D6E095F9BC4179B84FE65E1305D2F9EEF263FAE06D3BF2408`
+- `results.csv`：`0AFDEF18C1B38C3D1B5455457BFBA636CB0785863922026DC77CA048A1510D2B`
+- `best.pt`：`377994227058D02A404B16B4807E1150D97A70F54FBB22AFD3519458035145A1`
+- `last.pt`：`64A19672E0DBB6BD1E6F21B392A41B2AB6508D0F831C618053B685CDDE7D2CDF`
+- 测试 CSV：`295F4BCDAEE69334F6FB427C3B619561A34C0917635D1B1BBA5A1EA425115D53`
