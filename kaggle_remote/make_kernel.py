@@ -7,6 +7,7 @@
 
 用法（在 kaggle_remote 目录下）：
     python make_kernel.py --mode smoke    --model yolo26m.pt --epochs 1
+    python make_kernel.py --mode smoke    --architecture rtdetr --epochs 1
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 --attempts 8:2,6:2,4:2,4:0
     python make_kernel.py --mode full     --model yolo26m.pt --epochs 30 --multiscale
     python make_kernel.py --mode full     --model yolo26m.pt --epochs 30 --multiscale \
@@ -92,9 +93,19 @@ def _compact_decimal_tag(value: float) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("smoke", "ablation", "full"), required=True)
-    parser.add_argument("--model", default="yolo26m.pt")
+    parser.add_argument("--architecture", choices=("yolo", "rtdetr"), default="yolo")
+    parser.add_argument(
+        "--model",
+        help="预训练权重；默认随架构选择 yolo26m.pt 或 rtdetr-l.pt",
+    )
     parser.add_argument("--epochs", type=int, required=True)
-    parser.add_argument("--attempts", default="8:2,6:2,4:2,4:0", help="batch:workers[:devices] 降级序列；devices 用 + 连接表示多卡 DDP，如 8:2:0+1")
+    parser.add_argument(
+        "--attempts",
+        help=(
+            "batch:workers[:devices] 降级序列；devices 用 + 连接表示多卡 DDP，如 8:2:0+1。"
+            "默认 YOLO=8:2,6:2,4:2,4:0，RT-DETR=2:2,1:2,1:0"
+        ),
+    )
     parser.add_argument("--multiscale", action="store_true", help="推理用 7 尺度融合（出正式提交时用）")
     parser.add_argument("--data", default="hsi16",
                         help="训练数据：hsi16（普通 16 波段 NPY，默认）、hsi16_phase（相位感知 16 波段 NPY）、"
@@ -129,6 +140,14 @@ def main() -> None:
     parser.add_argument("--machine-shape", default=None,
                         help="GPU 型号；注意 NvidiaL4 对本账号不开放（推送会 400），默认留空用 Kaggle 分配的 GPU")
     args = parser.parse_args()
+    if args.model is None:
+        args.model = "rtdetr-l.pt" if args.architecture == "rtdetr" else "yolo26m.pt"
+    if args.attempts is None:
+        args.attempts = (
+            "2:2,1:2,1:0"
+            if args.architecture == "rtdetr"
+            else "8:2,6:2,4:2,4:0"
+        )
 
     try:
         _validate_percentiles(args.lower_percentile, args.upper_percentile)
@@ -152,8 +171,22 @@ def main() -> None:
         parser.error("hsi16_phase 单变量实验必须使用 --extra-channel-init random")
     if not args.multiscale and (args.fusion_iou != 0.70 or args.support_gain != 0.0):
         parser.error("--fusion-iou/--support-gain 的非默认值要求同时启用 --multiscale")
+    if args.architecture == "rtdetr":
+        if args.data != "hsi16":
+            parser.error("RT-DETR 远程路径目前只支持 --data hsi16")
+        if args.spectral_stem:
+            parser.error("RT-DETR 不支持 YOLO 专属的 --spectral-stem")
+        if args.cls_pw != 0.0:
+            parser.error("RT-DETR 不支持 YOLO 专属的 --cls-pw")
+        if args.scale != 0.5:
+            parser.error("RT-DETR 远程路径尚未暴露 random-affine --scale")
+        if args.dfl != 1.5:
+            parser.error("RT-DETR 不使用 YOLO DFL gain；--dfl 必须保持默认 1.5")
+        if args.object_crops or args.tile_inference:
+            parser.error("RT-DETR smoke/fixed 路径暂不支持 object crops 或 tile inference")
 
     model_tag = args.model.removesuffix(".pt")
+    architecture_tag = "_rtdetr" if args.architecture == "rtdetr" else ""
     if args.data in ("hsi16", "hsi16_phase"):
         percentile_tag = "" if (args.lower_percentile, args.upper_percentile) == (0.5, 99.5) else (
             f"_p{_percentile_tag(args.lower_percentile)}_"
@@ -191,6 +224,7 @@ def main() -> None:
     config = (
         "CONFIG = {\n"
         f'    "MODE": "{args.mode}",\n'
+        f'    "ARCHITECTURE": "{args.architecture}",\n'
         f'    "MODEL": "{args.model}",\n'
         f'    "EPOCHS": {args.epochs},\n'
         f'    "RUN_NAME": "{run_name}",\n'
@@ -216,7 +250,7 @@ def main() -> None:
     if count != 1:
         raise SystemExit("主脚本里没有找到 CONFIG 块，无法生成")
 
-    folder = HERE / f"kernel_{args.mode}{variant_tag}{inference_tag}"
+    folder = HERE / f"kernel_{args.mode}{architecture_tag}{variant_tag}{inference_tag}"
     folder.mkdir(exist_ok=True)
     (folder / "run_hsi_yolo26.py").write_text(rendered, encoding="utf-8")
     metadata = {
@@ -245,7 +279,8 @@ def main() -> None:
     print(f"已生成 {folder}")
     print(f"  Notebook : {metadata['id']}")
     print(f"  运行名   : {run_name}")
-    print(f"  配置     : mode={args.mode} model={args.model} epochs={args.epochs} "
+    print(f"  配置     : mode={args.mode} architecture={args.architecture} "
+          f"model={args.model} epochs={args.epochs} "
           f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
           f"seed={args.seed} extra_channel_init={args.extra_channel_init} "
           f"spectral_stem={args.spectral_stem} "

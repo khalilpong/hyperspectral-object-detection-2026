@@ -32,6 +32,14 @@ def _load_crop_dataset_builder():
     return module
 
 
+def _load_runner():
+    spec = importlib.util.spec_from_file_location("remote_runner_under_test", RUNNER)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_percentile_validation_and_stable_tags() -> None:
     module = _load_make_kernel()
 
@@ -405,6 +413,108 @@ def test_make_kernel_renders_single_checkpoint_supported_multiscale_full_candida
     assert '"RUN_NAME": "kaggle_full_yolo26m_dfl200_e30"' in rendered
     assert metadata["id"] == "zephyrpong/hsi-yolo26m-dfl200-f074-sg0125-full"
     assert metadata["is_private"] is True
+
+
+def test_make_kernel_renders_rtdetr_hsi16_smoke_with_safe_fallbacks(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "smoke",
+            "--architecture",
+            "rtdetr",
+            "--epochs",
+            "1",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_smoke_rtdetr"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"ARCHITECTURE": "rtdetr"' in rendered
+    assert '"MODEL": "rtdetr-l.pt"' in rendered
+    assert '"ATTEMPTS": "2:2,1:2,1:0"' in rendered
+    assert '"RUN_NAME": "kaggle_smoke_rtdetr-l_e1"' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-rtdetr-l-smoke"
+    assert metadata["is_private"] is True
+    assert metadata["dataset_sources"] == [
+        "zephyrpong/hsi-detection-code",
+        "zephyrpong/hsi-competition-raw",
+    ]
+
+
+def test_remote_runner_builds_rtdetr_command_without_yolo_only_gains(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_runner()
+    monkeypatch.setattr(module, "ARCHITECTURE", "rtdetr")
+    monkeypatch.setattr(module, "MODE", "smoke")
+
+    command = module.build_training_command(
+        tmp_path / "rtdetr-l.pt",
+        tmp_path / "dataset.yaml",
+        batch=2,
+        device="0",
+        workers=2,
+    )
+
+    assert command[1] == "scripts/train_rtdetr_hsi.py"
+    assert command[command.index("--batch") + 1] == "2"
+    assert command[command.index("--extra-channel-init") + 1] == "random"
+    assert "--dfl" not in command
+    assert "--cls-pw" not in command
+    assert "--scale" not in command
+    assert "--no-val" not in command
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ["--dfl", "2.0"],
+        ["--cls-pw", "0.25"],
+        ["--spectral-stem"],
+        ["--scale", "0.3"],
+        ["--data", "hsi16_phase"],
+        ["--object-crops"],
+        ["--tile-inference"],
+    ),
+)
+def test_make_kernel_rejects_yolo_only_variants_for_rtdetr(
+    tmp_path: Path, monkeypatch, arguments: list[str]
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "smoke",
+            "--architecture",
+            "rtdetr",
+            "--epochs",
+            "1",
+            *arguments,
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        module.main()
 
 
 def test_make_kernel_rejects_conflicting_spectral_initialization(

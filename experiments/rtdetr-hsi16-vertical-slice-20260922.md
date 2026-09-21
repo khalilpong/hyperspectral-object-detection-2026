@@ -23,6 +23,11 @@ detection model / 单 checkpoint 的候选。它尚未获得 fixed-split 分数�
   - 检查 RGB 权重精确迁移和 HSI stem 有限非零梯度。
 - `scripts/predict_submission.py --architecture rtdetr`
   - 保存后的 16 通道 RT-DETR checkpoint 可沿用现有 NPY/CSV 推理路径。
+- `kaggle_remote/run_hsi_yolo26.py` / `make_kernel.py`
+  - 新增显式 `ARCHITECTURE=yolo|rtdetr` 契约；
+  - RT-DETR 分支只调用 `scripts/train_rtdetr_hsi.py`，并把同一架构传给推理；
+  - 禁止把 YOLO 专属的 DFL、`cls_pw`、SpectralStem、scale/crop/tile 变量混入；
+  - RT-DETR smoke 默认按 `batch/workers=2:2,1:2,1:0` 降级。
 
 ## 事实证据
 
@@ -53,7 +58,9 @@ CPU，1 epoch，imgsz 64）：
 - fresh-process NPY inference 返回标准 `result.boxes`；
 - 现有提交脚本输出 300 框、0 dropped，checker 通过 1/1 图。
 
-完整测试：`101 passed`。
+完整测试：`110 passed`。已生成但未推送私有模板
+`kaggle_remote/kernel_smoke_rtdetr`，脚本语法编译通过；配置为 1 epoch、
+1024、HSI16、`rtdetr-l.pt`、单 checkpoint。
 
 ## 尚未证明与下一门禁
 
@@ -61,4 +68,7 @@ CPU，1 epoch，imgsz 64）：
 正式 fixed-val mAP、full-data 或 Public Score。下一步只能是独立 RT-DETR-L
 HSI16 Kaggle smoke（优先 batch 2/1），成功后再跑固定 2400/600；固定划分仍
 必须达到 `0.70443` 才能训练全量。它不得与 YOLO26m、DFL2.0 或 DFL2.5 的
-预测融合。
+预测融合。当前私有 `hsi-detection-code` 远端版本尚未包含
+`hsi_detection.rtdetr.py`、`scripts.train_rtdetr_hsi.py`、更新后的预测入口和
+`rtdetr-l.pt`；必须先创建并等候一个新的私有 dataset version ready，才可推送
+上述 smoke Kernel。
