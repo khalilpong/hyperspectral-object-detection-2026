@@ -15,6 +15,8 @@
         --extra-channel-init zero
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --spectral-stem
+    python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
+        --data hsi16_phase --phase-target-long-edge 1024
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -57,7 +59,8 @@ def main() -> None:
     parser.add_argument("--attempts", default="8:2,6:2,4:2,4:0", help="batch:workers[:devices] 降级序列；devices 用 + 连接表示多卡 DDP，如 8:2:0+1")
     parser.add_argument("--multiscale", action="store_true", help="推理用 7 尺度融合（出正式提交时用）")
     parser.add_argument("--data", default="hsi16",
-                        help="训练数据：hsi16（16 波段 NPY，默认）、pseudo_rgb（波段 5/8/13 伪RGB PNG）"
+                        help="训练数据：hsi16（普通 16 波段 NPY，默认）、hsi16_phase（相位感知 16 波段 NPY）、"
+                             "pseudo_rgb（波段 5/8/13 伪RGB PNG）"
                              "或 pseudo_rgb:3,6,8（自定义三个波段）")
     parser.add_argument("--seed", type=int, default=2026, help="训练随机种子")
     parser.add_argument("--extra-channel-init", choices=("random", "zero"), default="random",
@@ -68,6 +71,8 @@ def main() -> None:
                         help="HSI16 共享缩放下百分位")
     parser.add_argument("--upper-percentile", type=float, default=99.5,
                         help="HSI16 共享缩放上百分位")
+    parser.add_argument("--phase-target-long-edge", type=int, default=1024,
+                        help="hsi16_phase 保持宽高比重建后的目标长边")
     parser.add_argument("--object-crops", action="store_true",
                         help="训练时给每张源图增加一个 128x256 对象感知 crop")
     parser.add_argument("--tile-inference", action="store_true",
@@ -87,13 +92,20 @@ def main() -> None:
         parser.error("--spectral-stem 目前只支持 --data hsi16")
     if args.spectral_stem and args.extra_channel_init != "random":
         parser.error("--spectral-stem 与 --extra-channel-init zero 互斥")
+    if args.phase_target_long_edge <= 0:
+        parser.error("--phase-target-long-edge 必须是正整数")
+    if args.data != "hsi16_phase" and args.phase_target_long_edge != 1024:
+        parser.error("--phase-target-long-edge 只适用于 --data hsi16_phase")
+    if args.data == "hsi16_phase" and args.extra_channel_init != "random":
+        parser.error("hsi16_phase 单变量实验必须使用 --extra-channel-init random")
 
     model_tag = args.model.removesuffix(".pt")
-    if args.data == "hsi16":
-        data_tag = "" if (args.lower_percentile, args.upper_percentile) == (0.5, 99.5) else (
+    if args.data in ("hsi16", "hsi16_phase"):
+        percentile_tag = "" if (args.lower_percentile, args.upper_percentile) == (0.5, 99.5) else (
             f"_p{_percentile_tag(args.lower_percentile)}_"
             f"{_percentile_tag(args.upper_percentile)}"
         )
+        data_tag = ("_phase" if args.data == "hsi16_phase" else "") + percentile_tag
     elif args.data == "pseudo_rgb":
         if (args.lower_percentile, args.upper_percentile) != (0.5, 99.5):
             parser.error("--lower-percentile/--upper-percentile 只适用于 hsi16")
@@ -127,6 +139,7 @@ def main() -> None:
         f'    "SPECTRAL_STEM": {1 if args.spectral_stem else 0},\n'
         f'    "LOWER_PERCENTILE": {args.lower_percentile!r},\n'
         f'    "UPPER_PERCENTILE": {args.upper_percentile!r},\n'
+        f'    "PHASE_TARGET_LONG_EDGE": {args.phase_target_long_edge},\n'
         f'    "OBJECT_CROPS": {1 if args.object_crops else 0},\n'
         f'    "TILE_INFERENCE": {1 if args.tile_inference else 0},\n'
         "}"
@@ -169,6 +182,7 @@ def main() -> None:
           f"seed={args.seed} extra_channel_init={args.extra_channel_init} "
           f"spectral_stem={args.spectral_stem} "
           f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "
+          f"phase_target_long_edge={args.phase_target_long_edge} "
           f"object_crops={args.object_crops} tile_inference={args.tile_inference}")
     print(f"推送：cd {folder.name} && kaggle kernels push -p .")
 

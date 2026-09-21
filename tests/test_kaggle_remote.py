@@ -161,6 +161,52 @@ def test_make_kernel_renders_isolated_spectral_stem_variant(
     ]
 
 
+def test_make_kernel_renders_isolated_phase_aware_variant(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--data",
+            "hsi16_phase",
+            "--phase-target-long-edge",
+            "1024",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_phase"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_phase_e30"' in rendered
+    assert '"DATA": "hsi16_phase"' in rendered
+    assert '"PHASE_TARGET_LONG_EDGE": 1024' in rendered
+    assert '"EXTRA_CHANNEL_INIT": "random"' in rendered
+    assert '"SPECTRAL_STEM": 0' in rendered
+    assert '"OBJECT_CROPS": 0' in rendered
+    assert '"TILE_INFERENCE": 0' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-phase-ablation"
+    assert metadata["is_private"] is True
+    assert metadata["dataset_sources"] == [
+        "zephyrpong/hsi-detection-code",
+        "zephyrpong/hsi-competition-raw",
+    ]
+
+
 def test_make_kernel_rejects_conflicting_spectral_initialization(
     tmp_path: Path, monkeypatch
 ) -> None:
