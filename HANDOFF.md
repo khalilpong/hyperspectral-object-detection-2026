@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-21 23:51（北京时间）
+> 最后更新：2026-09-22 03:10（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -20,6 +20,8 @@
 - 同规格 YOLO26m 45 轮 fixed split 已完成并否决：最佳/最终均为 epoch 45 的 `0.69899`，比 e30 的 `0.70143` 低 `0.00244`，比全量门槛低 `0.00544`；不启动 full-data 45 轮训练，测试 CSV 仅通过本地结构校验，未上传比赛。
 - `cls_pw=0.25` 私有 fixed-split 消融已完成并否决：固定 2400/600，唯一训练变量为分类频次权重；最佳 epoch 27 为 `0.69863`（mAP50 `0.95662`），最终 epoch 30 为 `0.69862`，低于普通同规格 e30 `0.70143` 和 `0.70443` 门槛。训练 return code 0、batch 8/workers 2/device 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 36,784 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
 - random-affine `scale=0.3` 私有 fixed-split 消融已完成并否决：固定 2400/600，已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于 `0.70443` 门槛 `0.00451`。训练 return code 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 31,848 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
+- 同 checkpoint 七尺度来源消融已完成并否决：七项 leave-one-out、中心 3/5 尺度和两组固定对称权重共 11 个候选均低于 `0.70570818` control；最好是删除 `1216`，仍低 `0.00044541`。保留全部七尺度统一权重，不生成或提交新候选。
+- `dfl=2.0` 与 `dfl=2.5` 两个彼此独立的单 YOLO26m fixed-split 私有作业正在 Kaggle 运行；各自只改变 DFL gain，按 `0.70443` 分别门禁，绝不融合二者。
 
 ## 👉 接手后第一件事
 
@@ -27,8 +29,8 @@
 2. `cls_pw=0.25` fixed split 已以最佳 `0.69863 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
 3. phase-aware fixed split 已以 `0.69935 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
 4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
-5. 当前没有正在运行或已授权的新训练。若要继续，先向用户说明候选变量、固定划分门禁和 GPU 成本，再取得新的明确授权。
-6. 仍可讨论的新单变量包括同规格新 seed 方差对照；`cls_pw=0.5` 与已失败的 `0.25` 同机制、先验更弱。任何新训练和 Kaggle Submit 均需动作时确认。
+5. 当前正在运行 `dfl=2.0` 与 `dfl=2.5` 两个独立 fixed-split 作业；不要重启。完成后下载到不同目录，使用 `scripts/check_fixed_split_gate.py` 分别核验；只有 `>=0.70443` 的候选才进入对应 full-data。
+6. 当前持续目标已明确授权合规 Kaggle GPU 运行与提交；仍需在每次动作前复核单 checkpoint 血缘、门禁、提交格式与 Phase 2 数据覆盖，绝不提交历史 ensemble。
 
 ### 成绩与合规状态
 
@@ -48,7 +50,7 @@
 4. 显式 horizontal-flip-only 已完成：cache control 通过，但最佳七尺度+flip 只增 `+0.00016978`，低于 `+0.001` 门禁，不再投入。
 5. random-affine `scale=0.3` fixed split 已完成但只有 `0.69992`，低普通同规格 e30 `0.00151`；门禁失败，不跑 full-data、不提交。
 6. 同规格新 seed 只能作为新的单变量 fixed-split 方差对照；`cls_pw=0.5` 因与已失败的 `0.25` 同机制、先验更弱，优先级更低。启动前必须重新取得授权。
-7. zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA 和继续细扫后处理均已否决，不重复消耗截止前时间。
+7. zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、当前 checkpoint tile TTA、尺度子集/固定尺度权重和继续细扫后处理均已否决，不重复消耗截止前时间。
 8. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
 > 提交额度每天 3 次，北京时间 08:00 重置。19:27 已用完当日最后一次，下一次提交须等重置后再实时复核。最终提交必须手工选中合规的 ref `56392305`（可选 ref `56379896` 作为第二项），不能让 Kaggle 自动按最高 Public 选择历史 ensemble。
