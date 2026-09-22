@@ -324,12 +324,49 @@ def _audit_model_contract(
         )
 
 
+def _audit_model_source(
+    steps: dict[str, object],
+    *,
+    expected_model: str,
+    expected_model_source_kind: str,
+    expected_reg_max: int,
+    expected_pretrained_weights_sha256: str | None,
+) -> dict[str, object]:
+    observed = steps.get("model_architecture_prepared")
+    if not isinstance(observed, dict):
+        raise ValueError(
+            "status.json is missing the model_architecture_prepared source audit"
+        )
+    expected = {
+        "model_source_kind": expected_model_source_kind,
+        "pretrained_weights": expected_model,
+        "reg_max": expected_reg_max,
+    }
+    _expect_equal(observed, expected)
+    digest = observed.get("pretrained_weights_sha256")
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise ValueError("model source audit is missing a valid checkpoint SHA-256")
+    if expected_pretrained_weights_sha256 is not None:
+        expected_digest = expected_pretrained_weights_sha256.upper()
+        if digest.upper() != expected_digest:
+            raise ValueError(
+                "checkpoint SHA-256 mismatch: "
+                f"observed={digest!r}, expected={expected_digest!r}"
+            )
+    size = observed.get("pretrained_weights_bytes")
+    if not isinstance(size, int) or size <= 0:
+        raise ValueError("model source audit is missing a positive checkpoint size")
+    return observed
+
+
 def audit_fixed_split(
     *,
     status_path: Path,
     results_path: Path,
     expected_architecture: str = "yolo",
     expected_model: str | None = None,
+    expected_model_source_kind: str | None = None,
+    expected_pretrained_weights_sha256: str | None = None,
     expected_model_yaml: str | None = None,
     expected_reg_max: int = 1,
     expected_dfl: float | None = None,
@@ -353,6 +390,26 @@ def audit_fixed_split(
         expected_model = (
             "rtdetr-l.pt" if expected_architecture == "rtdetr" else "yolo26m.pt"
         )
+    require_model_source_audit = (
+        expected_model_source_kind is not None
+        or expected_pretrained_weights_sha256 is not None
+    )
+    inferred_model_source_kind = (
+        "yaml_transfer" if expected_model_yaml else "checkpoint_native"
+    )
+    if expected_model_source_kind is None:
+        expected_model_source_kind = inferred_model_source_kind
+    if expected_model_source_kind not in {"checkpoint_native", "yaml_transfer"}:
+        raise ValueError("Unsupported expected_model_source_kind")
+    if expected_model_source_kind != inferred_model_source_kind:
+        raise ValueError(
+            "expected_model_source_kind is inconsistent with expected_model_yaml"
+        )
+    if expected_pretrained_weights_sha256 is not None:
+        digest = expected_pretrained_weights_sha256.strip()
+        if len(digest) != 64 or any(character not in "0123456789abcdefABCDEF" for character in digest):
+            raise ValueError("expected_pretrained_weights_sha256 must be 64 hex characters")
+        expected_pretrained_weights_sha256 = digest.upper()
     if expected_architecture == "yolo" and expected_dfl is None:
         raise ValueError("YOLO fixed-split audit requires expected_dfl")
     if expected_architecture == "rtdetr" and expected_dfl is not None:
@@ -360,7 +417,9 @@ def audit_fixed_split(
     if expected_reg_max <= 0:
         raise ValueError("expected_reg_max must be positive")
     if expected_architecture == "rtdetr" and (
-        expected_reg_max != 1 or expected_model_yaml
+        expected_reg_max != 1
+        or expected_model_yaml
+        or expected_model_source_kind != "checkpoint_native"
     ):
         raise ValueError("RT-DETR does not use the YOLO reg_max/model-YAML contract")
     if not math.isfinite(expected_degrees) or not 0.0 <= expected_degrees <= 180.0:
@@ -415,7 +474,11 @@ def audit_fixed_split(
     config.setdefault("BOX_IOU_LOSS", "ciou")
     config.setdefault("OPTIMIZER_RECIPE", "auto")
     config.setdefault("MODEL_YAML", "")
+    source_kind_was_recorded = "MODEL_SOURCE_KIND" in config
+    config.setdefault("MODEL_SOURCE_KIND", inferred_model_source_kind)
     config.setdefault("REG_MAX", 1)
+    if require_model_source_audit and not source_kind_was_recorded:
+        raise ValueError("status config is missing MODEL_SOURCE_KIND")
     observed_architecture = config.get("ARCHITECTURE", "yolo")
     if observed_architecture != expected_architecture:
         raise ValueError(
@@ -426,6 +489,7 @@ def audit_fixed_split(
     expected_config = {
         "MODE": "ablation",
         "MODEL": expected_model,
+        "MODEL_SOURCE_KIND": expected_model_source_kind,
         "MODEL_YAML": expected_model_yaml or "",
         "REG_MAX": expected_reg_max,
         "EPOCHS": 30,
@@ -491,6 +555,16 @@ def audit_fixed_split(
             dataset_yaml_path=dataset_yaml_path,
             split_manifest_path=split_manifest_path,
             expected_band_order=expected_band_order,
+        )
+
+    model_source_audit = None
+    if require_model_source_audit:
+        model_source_audit = _audit_model_source(
+            steps,
+            expected_model=expected_model,
+            expected_model_source_kind=expected_model_source_kind,
+            expected_reg_max=expected_reg_max,
+            expected_pretrained_weights_sha256=expected_pretrained_weights_sha256,
         )
 
     optimizer_contract = None
@@ -561,6 +635,7 @@ def audit_fixed_split(
         "single_model": True,
         "architecture": expected_architecture,
         "model": expected_model,
+        "expected_model_source_kind": expected_model_source_kind,
         "expected_model_yaml": expected_model_yaml or "",
         "expected_reg_max": expected_reg_max,
         "fixed_split": "fixed_2400_train_600_val",
@@ -569,6 +644,10 @@ def audit_fixed_split(
     }
     if expected_dfl is not None:
         contract["expected_dfl"] = expected_dfl
+    if expected_pretrained_weights_sha256 is not None:
+        contract["expected_pretrained_weights_sha256"] = (
+            expected_pretrained_weights_sha256.upper()
+        )
     if expected_band_order is not None:
         contract["expected_band_order"] = list(expected_band_order)
         contract["expected_dataset_id"] = _expected_hsi16_dataset_id(
@@ -597,6 +676,15 @@ def audit_fixed_split(
             "results_sha256": _sha256(results_path),
             **preparation_hashes,
             **(
+                {
+                    "pretrained_weights_sha256": str(
+                        model_source_audit["pretrained_weights_sha256"]
+                    ).upper()
+                }
+                if model_source_audit is not None
+                else {}
+            ),
+            **(
                 {"optimizer_contract_sha256": _sha256(optimizer_contract_path)}
                 if optimizer_contract_path is not None
                 else {}
@@ -618,6 +706,11 @@ def main() -> None:
         "--architecture", choices=("yolo", "rtdetr"), default="yolo"
     )
     parser.add_argument("--model")
+    parser.add_argument(
+        "--expected-model-source-kind",
+        choices=("checkpoint_native", "yaml_transfer"),
+    )
+    parser.add_argument("--expected-pretrained-weights-sha256")
     parser.add_argument("--expected-model-yaml")
     parser.add_argument("--expected-reg-max", type=int, default=1)
     parser.add_argument("--expected-dfl", type=float)
@@ -658,6 +751,8 @@ def main() -> None:
         results_path=args.results,
         expected_architecture=args.architecture,
         expected_model=args.model,
+        expected_model_source_kind=args.expected_model_source_kind,
+        expected_pretrained_weights_sha256=args.expected_pretrained_weights_sha256,
         expected_model_yaml=args.expected_model_yaml,
         expected_reg_max=args.expected_reg_max,
         expected_dfl=args.expected_dfl,

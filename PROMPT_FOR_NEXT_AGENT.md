@@ -39,15 +39,17 @@
 - RT-DETR-L 条件式 full-data 包 `kaggle_remote/kernel_full_rtdetr` 因 fixed 失败而永久禁止推送。RT-DETR 后续只剩一次 zero-extra fixed；若也失败，才允许一次已预注册的 `num_denoising=200` fixed，均不可与其他 checkpoint 融合。
 - YOLO26m 小角度旋转单变量已完成并否决：私有 `zephyrpong/hsi-yolo26m-deg5-ablation` version 1 的普通 HSI16 fixed 2400/600 合同审计通过，唯一变量为 `degrees 0→5`；最佳 epoch 29 `mAP50-95=0.68169`，最终 `0.68092`，比普通 e30 `0.70143` 低 `0.01974`，比门槛 `0.70443` 低 `0.02274`。不跑 full-data、不提交测试 CSV。
 - 两个互不混用的后备 fixed 包已在本地生成且全仓 `135 passed`，都未上传：YOLO26m `pseudo_rgb:13,8,5` 为 `kernel_ablation_prgb1385`；RT-DETR-L `extra_channel_init=zero` 为 `kernel_ablation_rtdetr_xczero`，门禁器可用 `--expected-extra-channel-init zero` 精确校验。EIoU 失败时才考虑前者，random-init RT-DETR 失败时才考虑后者；各自仍受 `0.70443` 门禁约束。
-- YOLO26l/P2/1280 已有负结果，不重复；唯一未测的容量候选 YOLO26x 已生成最低优先级私有 fixed 包 `kernel_ablation_yolo26x`（slug `zephyrpong/hsi-yolo26x-ablation`），只改模型 m→x，attempts `2:2,1:2,1:0`，未上传。只有 degrees=5、EIoU、`adamw_lr001` 与 `[13,8,5]` 均失败且额度仍足时才运行一次。
+- YOLO26l/P2/1280 已有负结果，不重复；唯一未测的容量候选 YOLO26x 已生成最低优先级私有 fixed 包 `kernel_ablation_yolo26x`（slug `zephyrpong/hsi-yolo26x-ablation`），只改模型 m→x，attempts `2:2,1:2,1:0`，未上传。只有 EIoU、`adamw_lr001`、`reg_max=16`、普通 HSI16 `[13,8,5,...]` 与 YOLO11m 均失败且额度仍足时才运行一次。
 - RT-DETR 的 COCO 类名别名没有足够语义依据，不做；已有 `num_denoising=200` 单变量私有 fixed 包 `kernel_ablation_rtdetr_nd200`（slug `zephyrpong/hsi-rtdetr-l-nd200-ablation`），未上传。只有 random 与 zero extra-channel RT-DETR 都失败后才运行一次。
 - YOLO26m EIoU 已预注册为更直接的严格定位后备：只替换 `BboxLoss` 的 CIoU，不改 assigner、DFL/L1、模型或推理；真实 16 通道 YOLO26m 单 batch forward/loss/backward finite。私有代码数据集新版本已 `ready` 且远端清单含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou` 的一次 push 在创建前因周 GPU 配额超限拒绝，远端没有运行版本。2026-09-22 15:34 实时刷新后仍为 `38:03 / 30 hrs`；额度真实恢复后只重试一次，按 `0.70443` 门禁。
 - YOLO26m `adamw_lr001` 已预注册为 EIoU 后的本地后备：两条真实 16 通道 smoke 的 runtime contract 证明基线和新配方都使用 AdamW、beta1 `0.9`、warmup-bias `0`，唯一有效差异为初始 LR `0.000455→0.001`；全仓 `141 passed`。本地包 `kernel_ablation_lr001` 未上传、未运行，排在 `[13,8,5]` 与 YOLO26x 前；必须随下载结果审计 `optimizer_contract.json` 并继续使用 `0.70443` 门禁。
 - YOLO26m `reg_max=16` 已预注册为后续直接定位架构候选：真实权重审计显示精确复用 `99.4216%` 的源 checkpoint 参数，regmax 专属 mismatch 只有 1,560 个源参数；真实 16 通道 true-DFL forward/loss/backward、4 图 Trainer runtime contract/checkpoint smoke 和全仓 `163 passed`。本地包 `kernel_ablation_rm16` 与 code-dataset staging 已就绪但未上传、未运行；未来结果必须同时审计 `model_contract.json`，固定门禁仍为 `0.70443`。
 - 普通 HSI16 `[13,8,5,...]` 通道顺序已预注册为后续 fixed 单变量：仍使用相同 16-band 集合、shared P0.5-P99.5、标签和 seed-2026 manifest，只把 pretrained RGB 三个位置从物理 `[5,8,13]` 映射改为 `[13,8,5]`；没有官方波长证据，不能宣称是真 RGB。独立数据身份和 preparation config/report/dataset/manifest 哈希门禁会拒绝 baseline NPY 混用；全仓 `177 passed`，本地包 `kernel_ablation_order1385` 与 code-dataset staging 已就绪但未上传、未运行。
+- YOLO11m HSI16 checkpoint-native fixed 候选已完成本地预注册：官方 Ultralytics Assets `v8.4.0` 的 `yolo11m.pt` 为 40,684,120 bytes，SHA-256 `D5FFC1A674953A08E11A8D21E022781B1B23A19B730AFC309290BD9FB5305B95`；真实 live 架构为 `reg_max=16`、true DFL、非 end-to-end Detect。HSI16/18 类可精确复用 `99.6848%` 源参数，真实 forward/loss/backward、4 图 Trainer、model/optimizer contract、fresh reload 与全仓 `184 passed` 均通过。本地私有包 `kernel_ablation_yolo11m_rm16` 和 code-dataset staging 已就绪但未上传、未运行；future gate 必须核验 source kind、权重大小/hash 和 runtime model contract，不能引用公开泄漏 Notebook 的 `0.7394`。
 - 面积分层框缩放已否决：75 个候选的三折 OOF `0.70686997`，比 identity 高但比已提交的全局 `×1.01` 低 `0.00063651`；full-val 最优仍等价于全局 `×1.01`，折间选择不一致。不要继续扫框校准。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置；`boxscale101` 成功后今日余 2 次。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。2026-09-22 15:34 实时 GPU 周额度为 `38:03 / 30 hrs`，不得用重复 push 试探后备作业。
+- 若用户选择 AutoDL 付费加速，当前保守建议是按量 RTX 4090 24GB、8 vCPU、32GB RAM、80GB 数据盘；一个 fixed 候选含上传/准备/审计约 3–4 小时，过 `0.70443` 后继续 full-data，最早约 6–8 小时可形成提交候选。公开文档没有实时小时价，租用前必须在登录态控制台核对现价并再次让用户确认；不能由自动化购买或启动付费实例。
 - Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 使用约 3.1 小时，phase-aware fixed split 使用约 2.5 小时，`cls_pw=0.25` fixed split 使用约 2.29 小时，`scale=0.3` fixed split 使用约 2.06 小时。启动任何新训练前先实时复核余额。
 - 主办方官方帖子要求所有团队在 **2026-09-23 前**发送团队信息，逾期可能影响成绩认定与奖励；邮件主题为“赛道名称－团队名称－队长姓名”，正文需列出全部队员、单位及指导教师（如有）。帖子没有写明目标检测赛道的指定收件邮箱，只给了疑问联系人 `1522859637@qq.com`，不得擅自把它当材料收件箱或代发个人信息。先让用户确认是否已经发送，并取得准确收件邮箱与具体个人信息。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
 
@@ -55,8 +57,8 @@
 
 1. `boxscale101` 已 `Success`，Public `0.63546`、ref `56455800`，不得重复提交。最终榜单目前仍是 `0/2` 手工选择；截止前经用户单独确认后至少选择 ref `56455800`，第二个安全候选可选 ref `56392305`，绝不能让自动选择落到历史 ensemble。
 2. RT-DETR random fixed 已按 `0.70443` 门禁失败，禁止推送 `kernel_full_rtdetr` 或上传其测试 CSV。GPU 配额恢复后，RT-DETR 分支只允许一次 zero-extra fixed；再失败才一次 `num_denoising=200`，不要加类名别名。
-3. GPU 配额可用且确认远端不存在 EIoU 版本后，YOLO 分支只推送一次已预注册 EIoU fixed，精确审计 `--expected-box-iou-loss eiou`。失败后排 `adamw_lr001`（核验 runtime optimizer contract），再排已预注册 `reg_max=16`（核验 runtime model contract），之后才是已打包的普通 HSI16 `[13,8,5,...]`（核验四份 preparation artifacts 与哈希）。
-4. YOLO11m HSI16 尚无合法分数且官方 checkpoint 还未完成本地下载/哈希审计，排在上述已打包候选之后；不得引用公开泄漏的 `0.7394`，也不得把既有 dfl-gain 当作 regmax16 的等价证据。
+3. GPU 配额可用且确认远端不存在 EIoU 版本后，YOLO 分支只推送一次已预注册 EIoU fixed，精确审计 `--expected-box-iou-loss eiou`。失败后排 `adamw_lr001`（核验 runtime optimizer contract），再排已预注册 `reg_max=16`（核验 runtime model contract），之后是已打包的普通 HSI16 `[13,8,5,...]`（核验四份 preparation artifacts 与哈希），再后才是 checkpoint-native YOLO11m（核验 exact source SHA 与 model contract）。
+4. YOLO11m HSI16 尚无合法 fixed 分数，但官方 checkpoint 的下载、SHA-256、runtime 架构和本地私有包均已审计完成。它只有一次 fixed 测量资格；不得引用公开泄漏的 `0.7394`，也不得把 smoke 或 `99.6848%` 迁移率写成精度收益。
 5. `dfl=2.0/2.5`、scale、`cls_pw`、phase-aware、e45、horizontal-flip、YOLO26m zero-init、object-crop、SpectralStem、tile TTA、尺度来源/权重、RT-DETR random 和继续扫框校准均已否决，不重复投入。
 6. 更直接候选都失败且额度仍足时，才运行一次已预注册 YOLO26x fixed；门禁器显式使用 `--model yolo26x.pt`。不要重跑 YOLO26l、P2 或 1280。
 7. 对任何新候选重新核对哈希、格式和额度；每次最终 Competition Submit 前都让用户确认。
@@ -84,7 +86,7 @@
    没有把 `exports/`、`data/`、`runs/`、`*.pt`、`submission*.csv`、`kaggle_remote/outputs|code_dataset|raw_dataset` 加进去，它们已在 .gitignore，不要强加）。
    **`git push` 必须先问我**（我还没确认远程 GitHub 仓库是私有的）。
 7. **花提交额度和 Kaggle GPU 额度前先经我同意**（提交是不可撤回的；GPU 每周额度有限）。最后一天不要留到最后才试。
-8. **比赛规则**：最终提交必须只有一个训练模型；同模型多尺度/TTA允许，多模型 voting/weighted fusion/post-NMS fusion 禁止。使用任何外部数据或非公开预训练权重前，先让我确认。目前只用了官方数据和 Ultralytics 的公开 yolo26 预训练权重。
+8. **比赛规则**：最终提交必须只有一个训练模型；同模型多尺度/TTA允许，多模型 voting/weighted fusion/post-NMS fusion 禁止。使用任何外部数据或非公开预训练权重前，先让我确认。目前只用了官方数据和 Ultralytics 的公开 YOLO26/YOLO11 预训练权重；YOLO11 尚未远程训练或提交。
 9. 改动 Kaggle 会从 `hsi-detection-code` 数据集恢复的 `scripts.*.py` / `hsi_detection.*.py` 后，必须同步 `kaggle_remote/code_dataset/` 并创建新的私有 dataset version；只改直接随 Notebook 上传的 `run_hsi_yolo26.py` 时，重新生成并推送 Kernel 即可。
 10. 本机 PowerShell 5.1 不支持 `&&`，命令一律用 **Git Bash**；Windows 上 Kaggle 命令带 `/` 的相对路径会出错，**先 `cd` 进目录再用 `-p .`**。
 

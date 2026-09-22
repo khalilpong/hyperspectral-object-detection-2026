@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 16:21（北京时间）
+> 最后更新：2026-09-22 17:10（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -36,6 +36,7 @@
 - YOLO26m 有效 AdamW `lr0=0.001` 已做成本地可审计 fixed 后备：真实 runtime contract 证明普通 `auto` 基线实际是 `AdamW(lr=0.000455,beta1=0.9,warmup_bias_lr=0)`，新配方仍是 AdamW、beta1 `0.9`、warmup-bias `0`，唯一有效变化为初始 LR `0.000455→0.001`。两条真实 16 通道 1-epoch smoke 均通过，全仓 `141 passed`；本地包 `kernel_ablation_lr001`（slug `zephyrpong/hsi-yolo26m-lr001-ablation`）未上传、未运行，排在 EIoU 后、`[13,8,5]` 与 YOLO26x 前，详见 `experiments/yolo26m-adamw-lr001-prereg-20260922.md`。
 - YOLO26m `reg_max=16` 已完成可审计 fixed 预注册：它把当前 `reg_max=1` 的归一化 L1 路径改为真正 16-bin DFL，其他训练合同不变。真实权重审计显示可精确复用源 checkpoint 的 `99.4216%` 参数，regmax 专属 shape mismatch 仅 1,560 个源参数；真实 16 通道 forward/loss/backward 与 4 图 Trainer/contract/checkpoint smoke 均通过，全仓 `163 passed`。本地包 `kernel_ablation_rm16`（slug `zephyrpong/hsi-yolo26m-rm16-ablation`）与 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-regmax16-prereg-20260922.md`。
 - 普通 HSI16 `[13,8,5,...]` 通道顺序候选已完成可审计 fixed 预注册：它仍是同一 16 个物理 band、同一 shared P0.5-P99.5 uint8、同一标签/manifest，只把 pretrained RGB 三个数组槽位的物理映射从 `[5,8,13]` 改为 `[13,8,5]`。新 `preparation_config/report/dataset/manifest` 合同与哈希门禁、独立数据目录会拒绝静默复用 baseline NPY；合成集端到端测试证明数组只发生预期 permutation，标签、manifest 与 normalization bounds 不变。全仓 `177 passed`；本地私有包 `kernel_ablation_order1385`（slug `zephyrpong/hsi-yolo26m-order1385-ablation`）和 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-hsi16-order1385-prereg-20260922.md`。
+- YOLO11m HSI16 checkpoint-native 候选也已完成可审计 fixed 预注册：官方 Ultralytics Assets `v8.4.0` 权重已下载并验 SHA-256 `D5FFC1A6...305B95`（40,684,120 bytes）；真实架构是 `reg_max=16`、true DFL、非 end-to-end Detect。HSI16/18 类目标可精确复用源 checkpoint 的 `99.6848%` 参数；真实 forward/loss/backward、4 图 Trainer、model/optimizer contract、保存后 fresh reload 与全仓 `184 passed` 均通过。本地私有包 `kernel_ablation_yolo11m_rm16`（slug `zephyrpong/hsi-yolo11m-rm16-ablation`）及 code-dataset staging 已就绪但**未上传、未运行**；来源种类、权重大小和 SHA-256 都进入 status/gate，详见 `experiments/yolo11m-hsi16-prereg-20260922.md`。
 - 面积分层框缩放已零 GPU 审计并否决：75 个 threshold/small-scale/large-scale 候选的三折 OOF 为 `0.70686997`，比 identity 高 `+0.00116178`，但比已经提交的全局 `×1.01` 低 `0.00063651`；full-val 最优本身就是全局 `×1.01`，折间选择也不一致。保留全局校准，停止继续扫框后处理。
 - 主办方于 2026-09-21 16:02（北京时间）发布官方帖子“【最终提醒】参赛团队信息收集即将截止”：所有团队须在 **9 月 23 日前**把团队信息发往所属赛道指定邮箱；邮件主题格式为“赛道名称－团队名称－队长姓名”，正文需列出全部队员姓名、所在单位及指导教师（如有）。逾期可能影响成绩认定和奖励。该提醒正文**没有给出目标检测赛道的指定收件邮箱**，只给出疑问联系人 `1522859637@qq.com`，不得把疑问邮箱擅自当作材料收件箱；也不能从 Kaggle 页面证明用户是否已经发送。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
 - 2026-09-22 约 14:00 的登录态 Submissions 页面显示 “5 days to go”，帮助文本为 **2026-09-27 16:00（新加坡/北京时间）**；这与此前 Rules 阶段日期不一致。提交当前确实开放，但在主办方正式澄清前，不把页面变化外推成其他 Phase/材料截止的自动延期。
@@ -70,7 +71,7 @@
 2. RT-DETR random fixed 已以 `0.69309` 失败。GPU 配额恢复且远端没有目标版本后，YOLO 分支优先只推送一次 EIoU fixed；RT-DETR 分支可独立只推送一次 zero-extra fixed。两分支互不融合，门禁均为 `0.70443`。
 3. EIoU 若失败，先跑已预注册且有 runtime contract 的 `adamw_lr001`；它失败后跑 `reg_max=16`，再考虑已打包的普通 HSI16 `[13,8,5,...]` 通道顺序。公开 Notebook 的 `0.7394` 有 93.36% 验证泄漏，不能作为收益证据。
 4. RT-DETR zero 若也失败、仍有额度，再只跑一次 `num_denoising=200` fixed；不要添加 COCO 类名别名。
-5. `reg_max=16` 与普通 HSI16 `[13,8,5,...]` 都仍只有“值得一次 fixed 测量”的资格，绝不能把本地 smoke/合同或既有 `dfl=2.0/2.5` 写成精度收益。顺序候选之后才实现并比较 YOLO11m HSI16；它的官方 checkpoint 尚未在本地下载和哈希审计。
+5. `reg_max=16`、普通 HSI16 `[13,8,5,...]` 与 YOLO11m HSI16 都仍只有“值得一次 fixed 测量”的资格，绝不能把本地 smoke/合同、权重可迁移率或既有 `dfl=2.0/2.5` 写成精度收益。YOLO11m 已下载官方 checkpoint、完成哈希/血缘审计并打包，排在顺序候选之后。
 6. 只有 EIoU、`adamw_lr001`、`reg_max=16`、普通 HSI16 通道顺序与 YOLO11m 等更直接候选都失败且额度仍足，才运行已预注册的 YOLO26x fixed。YOLO26l、P2、1280 不得重复。
 7. `dfl=2.0/2.5`、YOLO26m zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、tile TTA、尺度来源/权重和 RT-DETR random-init 均已否决。框校准只保留已过 OOF 的全局 `1.01×1.01`，不继续扫参。
 8. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
@@ -144,6 +145,7 @@ kaggle kernels status zephyrpong/<slug>
 | `hsi-yolo26m-eiou-ablation` | 本地私有包已生成并通过公式/梯度/真实 YOLO 单 batch smoke；只改 CIoU→EIoU。一次 push 在创建作业前因周 GPU 配额超限被拒，远端没有运行版本；2026-09-22 15:34 实时额度为 `38:03 / 30 hrs`，只在额度真实恢复后推一次；预注册见 `experiments/yolo26m-eiou-prereg-20260922.md` |
 | `hsi-yolo26m-lr001-ablation` | 本地私有包已生成；runtime contract 证明只把有效 AdamW 初始 LR `0.000455→0.001`，beta1/warmup-bias 等保持基线；两条真实 smoke 与全仓 `141 passed`，未上传、未运行；预注册见 `experiments/yolo26m-adamw-lr001-prereg-20260922.md` |
 | `hsi-yolo26m-rm16-ablation` | 本地私有包已生成；唯一架构变量 `reg_max 1→16`，真实权重迁移、true-DFL forward/loss/backward、真实 Trainer model contract/checkpoint smoke 与全仓 `163 passed`；本地 code-dataset staging 已同步，但 dataset 新版本与 Kernel 都未上传、未运行；预注册见 `experiments/yolo26m-regmax16-prereg-20260922.md` |
+| `hsi-yolo11m-rm16-ablation` | 本地私有包已生成；checkpoint-native 官方 `yolo11m.pt` SHA-256 `D5FFC1A6...305B95`，HSI16/18 类精确形状迁移率 `99.6848%`，true-DFL forward/loss/backward、真实 Trainer model/optimizer contract、fresh reload 和全仓 `184 passed`；本地 code-dataset staging 已同步，但 dataset 新版本与 Kernel 都未上传、未运行；预注册见 `experiments/yolo11m-hsi16-prereg-20260922.md` |
 | `submission_single_m_hsi16_ms7_f074_sg0125_boxscale101.csv` | 同一 full-data YOLO26m checkpoint 的七尺度合规 CSV，仅将每框宽高 `×1.01`；三折 OOF `+0.00179829`，SHA-256 `C01214E6...995A86`；2026-09-22 14:30 `Success`，Public `0.63546`，ref `56455800`，今日余 2 次 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
@@ -260,7 +262,7 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | 两张卡 DDP | `--attempts 8:2:0+1` 可用，已实测跑通（yolo26l 每轮 3.1 分钟） |
 | 额度消耗 | 09-17~09-18 两天共用掉约 20 小时（每周约 30 小时，重置日以 Kaggle 页面为准） |
 
-**不需要租云服务器**（[docs/CLOUD_SERVER_TRAINING.md](docs/CLOUD_SERVER_TRAINING.md) 保留备用：Kaggle 额度用完时启用）。
+当前 Kaggle 周额度实测为 `38:03 / 30 hrs`，新训练暂时被阻塞。若用户明确确认付费租用，AutoDL 按量 RTX 4090 24GB 是首选，建议 8 vCPU / 32GB RAM / 80GB 数据盘；从可用实例开始，单个 fixed 候选连同上传、解压和审计保守约 3–4 小时，只有过 `0.70443` 才继续 full-data，最早约 6–8 小时形成可提交候选。公开文档没有当前实时小时价，租机前必须在登录态控制台核对现价并由用户确认；见 [docs/CLOUD_SERVER_TRAINING.md](docs/CLOUD_SERVER_TRAINING.md)。
 
 ## 环境与操作的坑（本机）
 

@@ -30,6 +30,8 @@ def _write_run(
     box_iou_loss: str | None = None,
     optimizer_recipe: str | None = None,
     optimizer_contract: dict[str, object] | None = None,
+    model_source_kind: str | None = None,
+    model_source_audit: dict[str, object] | None = None,
     model_yaml: str | None = None,
     reg_max: int | None = None,
     model_contract: dict[str, object] | None = None,
@@ -73,6 +75,10 @@ def _write_run(
         status["config"]["BOX_IOU_LOSS"] = box_iou_loss
     if optimizer_recipe is not None:
         status["config"]["OPTIMIZER_RECIPE"] = optimizer_recipe
+    if model_source_kind is not None:
+        status["config"]["MODEL_SOURCE_KIND"] = model_source_kind
+    if model_source_audit is not None:
+        status["steps"]["model_architecture_prepared"] = model_source_audit
     if model_yaml is not None:
         status["config"]["MODEL_YAML"] = model_yaml
     if reg_max is not None:
@@ -455,6 +461,18 @@ def test_audit_fixed_split_checks_clean_adamw_lr001_runtime_contract(
 def test_audit_fixed_split_checks_yolo_regmax16_model_contract(
     tmp_path: Path,
 ) -> None:
+    checkpoint_sha256 = "401CEA9AB23AD19246FF7744859816BC599F350E93C9DD30367B6F0A0745D0B7"
+    source_audit = {
+        "model_source_kind": "yaml_transfer",
+        "checkpoint_origin": "packaged_code_dataset",
+        "model_yaml": "yolo26m-regmax16.yaml",
+        "model_yaml_sha256": "1" * 64,
+        "pretrained_weights": "yolo26m.pt",
+        "pretrained_weights_path": "/kaggle/input/hsi-detection-code/yolo26m.pt",
+        "pretrained_weights_sha256": checkpoint_sha256,
+        "pretrained_weights_bytes": 44_255_705,
+        "reg_max": 16,
+    }
     contract = {
         "model_class": "DetectionModel",
         "head_class": "Detect",
@@ -476,6 +494,8 @@ def test_audit_fixed_split_checks_yolo_regmax16_model_contract(
         tmp_path,
         dfl=1.5,
         best=0.705,
+        model_source_kind="yaml_transfer",
+        model_source_audit=source_audit,
         model_yaml="yolo26m-regmax16.yaml",
         reg_max=16,
         model_contract=contract,
@@ -486,6 +506,8 @@ def test_audit_fixed_split_checks_yolo_regmax16_model_contract(
     report = audit_fixed_split(
         status_path=status,
         results_path=results,
+        expected_model_source_kind="yaml_transfer",
+        expected_pretrained_weights_sha256=checkpoint_sha256.lower(),
         expected_model_yaml="yolo26m-regmax16.yaml",
         expected_reg_max=16,
         expected_dfl=1.5,
@@ -494,6 +516,7 @@ def test_audit_fixed_split_checks_yolo_regmax16_model_contract(
     )
 
     assert report["contract"]["expected_reg_max"] == 16
+    assert report["contract"]["expected_pretrained_weights_sha256"] == checkpoint_sha256
     assert report["contract"]["expected_model_yaml"] == "yolo26m-regmax16.yaml"
     assert len(report["hashes"]["model_contract_sha256"]) == 64
     assert report["passes_full_data_gate"] is True
@@ -516,6 +539,92 @@ def test_audit_fixed_split_checks_yolo_regmax16_model_contract(
             status_path=status,
             results_path=results,
             expected_model_yaml="yolo26m-regmax16.yaml",
+            expected_reg_max=16,
+            expected_dfl=1.5,
+            model_contract_path=contract_path,
+            gate=0.70443,
+        )
+
+
+def test_audit_fixed_split_accepts_yolo11_checkpoint_native_source(
+    tmp_path: Path,
+) -> None:
+    checkpoint_sha256 = "D5FFC1A674953A08E11A8D21E022781B1B23A19B730AFC309290BD9FB5305B95"
+    source_audit = {
+        "model_source_kind": "checkpoint_native",
+        "checkpoint_origin": "packaged_code_dataset",
+        "pretrained_weights": "yolo11m.pt",
+        "pretrained_weights_path": "/kaggle/input/hsi-detection-code/yolo11m.pt",
+        "pretrained_weights_sha256": checkpoint_sha256,
+        "pretrained_weights_bytes": 40_684_120,
+        "reg_max": 16,
+    }
+    contract = {
+        "model_class": "DetectionModel",
+        "head_class": "Detect",
+        "yaml_file": "yolo11.yaml",
+        "yaml_reg_max": None,
+        "reg_max": 16,
+        "dfl_module": "DFL",
+        "dfl_is_identity": False,
+        "end2end": False,
+        "nc": 18,
+        "names_count": 18,
+        "first_input_channels": 16,
+        "box_output_channels": [64, 64, 64],
+        "one2one_box_output_channels": None,
+        "parameter_count": 20_074_374,
+        "trainable_parameter_count": 20_074_374,
+    }
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        model="yolo11m.pt",
+        model_source_kind="checkpoint_native",
+        model_source_audit=source_audit,
+        model_yaml="",
+        reg_max=16,
+        model_contract=contract,
+    )
+    contract_path = tmp_path / "model_contract.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_model="yolo11m.pt",
+        expected_model_source_kind="checkpoint_native",
+        expected_pretrained_weights_sha256=checkpoint_sha256,
+        expected_reg_max=16,
+        expected_dfl=1.5,
+        model_contract_path=contract_path,
+        gate=0.70443,
+    )
+
+    assert report["contract"]["expected_model_source_kind"] == "checkpoint_native"
+    assert report["hashes"]["pretrained_weights_sha256"] == checkpoint_sha256
+    assert report["passes_full_data_gate"] is True
+
+    source_audit["pretrained_weights_sha256"] = "0" * 64
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        model="yolo11m.pt",
+        model_source_kind="checkpoint_native",
+        model_source_audit=source_audit,
+        model_yaml="",
+        reg_max=16,
+        model_contract=contract,
+    )
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_model="yolo11m.pt",
+            expected_model_source_kind="checkpoint_native",
+            expected_pretrained_weights_sha256=checkpoint_sha256,
             expected_reg_max=16,
             expected_dfl=1.5,
             model_contract_path=contract_path,

@@ -449,12 +449,82 @@ def test_make_kernel_renders_isolated_regmax16_variant(
     metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
     assert '"RUN_NAME": "kaggle_ablation_yolo26m_rm16_e30"' in rendered
     assert '"MODEL": "yolo26m.pt"' in rendered
+    assert '"MODEL_SOURCE_KIND": "yaml_transfer"' in rendered
     assert '"MODEL_YAML": "yolo26m-regmax16.yaml"' in rendered
     assert '"REG_MAX": 16' in rendered
     assert '"DFL": 1.5' in rendered
     assert '"BOX_IOU_LOSS": "ciou"' in rendered
     assert metadata["id"] == "zephyrpong/hsi-yolo26m-rm16-ablation"
     assert metadata["is_private"] is True
+
+
+def test_make_kernel_renders_yolo11m_checkpoint_native_candidate(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo11m.pt",
+            "--model-source-kind",
+            "checkpoint_native",
+            "--epochs",
+            "30",
+            "--reg-max",
+            "16",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_yolo11m_rm16"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo11m_rm16_e30"' in rendered
+    assert '"MODEL": "yolo11m.pt"' in rendered
+    assert '"MODEL_SOURCE_KIND": "checkpoint_native"' in rendered
+    assert '"MODEL_YAML": ""' in rendered
+    assert '"REG_MAX": 16' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo11m-rm16-ablation"
+    assert metadata["is_private"] is True
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ["--reg-max", "1"],
+        ["--reg-max", "16", "--model-source-kind", "yaml_transfer"],
+        ["--mode", "full", "--epochs", "30", "--reg-max", "16"],
+    ),
+)
+def test_make_kernel_rejects_yolo11m_source_or_fixed_contract_drift(
+    tmp_path: Path, monkeypatch, arguments: list[str]
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    base = ["--mode", "ablation", "--epochs", "30"]
+    if "--mode" in arguments:
+        base = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["make_kernel.py", *base, "--model", "yolo11m.pt", *arguments],
+    )
+
+    with pytest.raises(SystemExit):
+        module.main()
 
 
 @pytest.mark.parametrize(
@@ -856,6 +926,7 @@ def test_remote_runner_resolves_audited_yaml_and_packaged_weights(
     model_source, load_weights, audit = module.resolve_training_model_sources(
         tmp_path,
         model="yolo26m.pt",
+        model_source_kind="yaml_transfer",
         model_yaml="yolo26m-regmax16.yaml",
         expected_reg_max=16,
     )
@@ -863,7 +934,10 @@ def test_remote_runner_resolves_audited_yaml_and_packaged_weights(
     assert model_source == model_yaml
     assert load_weights == weights
     assert audit is not None
+    assert audit["model_source_kind"] == "yaml_transfer"
+    assert audit["checkpoint_origin"] == "packaged_code_dataset"
     assert audit["reg_max"] == 16
+    assert audit["pretrained_weights_bytes"] == len(b"pretrained")
     assert len(audit["model_yaml_sha256"]) == 64
     assert len(audit["pretrained_weights_sha256"]) == 64
 
@@ -880,6 +954,7 @@ def test_remote_runner_rejects_yaml_variant_without_packaged_weights(
         module.resolve_training_model_sources(
             tmp_path,
             model="yolo26m.pt",
+            model_source_kind="yaml_transfer",
             model_yaml="yolo26m-regmax16.yaml",
             expected_reg_max=16,
         )
@@ -896,9 +971,69 @@ def test_remote_runner_rejects_yaml_regmax_drift(tmp_path: Path) -> None:
         module.resolve_training_model_sources(
             tmp_path,
             model="yolo26m.pt",
+            model_source_kind="yaml_transfer",
             model_yaml="yolo26m-regmax16.yaml",
             expected_reg_max=16,
         )
+
+
+def test_remote_runner_audits_packaged_checkpoint_native_source(
+    tmp_path: Path,
+) -> None:
+    module = _load_runner()
+    weights = tmp_path / "yolo11m.pt"
+    weights.write_bytes(b"official-checkpoint")
+
+    model_source, load_weights, audit = module.resolve_training_model_sources(
+        tmp_path,
+        model="yolo11m.pt",
+        model_source_kind="checkpoint_native",
+        model_yaml="",
+        expected_reg_max=16,
+    )
+
+    assert model_source == weights
+    assert load_weights is None
+    assert audit["model_source_kind"] == "checkpoint_native"
+    assert audit["checkpoint_origin"] == "packaged_code_dataset"
+    assert audit["pretrained_weights"] == "yolo11m.pt"
+    assert audit["pretrained_weights_bytes"] == len(b"official-checkpoint")
+    assert len(audit["pretrained_weights_sha256"]) == 64
+
+
+def test_remote_runner_downloads_and_audits_missing_checkpoint_native_source(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_runner()
+    downloaded = tmp_path / "yolo11m.pt"
+
+    def fake_download(model: str) -> str:
+        assert model == "yolo11m.pt"
+        downloaded.write_bytes(b"downloaded-official-checkpoint")
+        return str(downloaded)
+
+    import ultralytics.utils.downloads
+
+    monkeypatch.setattr(
+        ultralytics.utils.downloads,
+        "attempt_download_asset",
+        fake_download,
+    )
+
+    model_source, load_weights, audit = module.resolve_training_model_sources(
+        tmp_path / "empty-code-root",
+        model="yolo11m.pt",
+        model_source_kind="checkpoint_native",
+        model_yaml="",
+        expected_reg_max=16,
+    )
+
+    assert model_source == downloaded
+    assert load_weights is None
+    assert audit["checkpoint_origin"] == "official_asset_download"
+    assert audit["pretrained_weights_bytes"] == len(
+        b"downloaded-official-checkpoint"
+    )
 
 
 def test_remote_runner_builds_clean_adamw_lr001_command(

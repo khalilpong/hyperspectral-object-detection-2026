@@ -28,6 +28,8 @@
         --optimizer-recipe adamw_lr001
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --reg-max 16
+    python make_kernel.py --mode ablation --model yolo11m.pt --epochs 30 \
+        --reg-max 16 --model-source-kind checkpoint_native
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -139,6 +141,15 @@ def main() -> None:
         default=1,
         help="YOLO box distribution bins；1 为 YOLO26 基线，16 为 true DFL 候选",
     )
+    parser.add_argument(
+        "--model-source-kind",
+        choices=("auto", "checkpoint_native", "yaml_transfer"),
+        default="auto",
+        help=(
+            "模型来源合同；checkpoint_native 直接使用 checkpoint 自带架构，"
+            "yaml_transfer 先按 YAML 建模再迁移 checkpoint，auto 按候选推断"
+        ),
+    )
     parser.add_argument("--epochs", type=int, required=True)
     parser.add_argument(
         "--attempts",
@@ -205,10 +216,33 @@ def main() -> None:
     if args.model is None:
         args.model = "rtdetr-l.pt" if args.architecture == "rtdetr" else "yolo26m.pt"
     model_yaml = ""
+    inferred_model_source_kind = "checkpoint_native"
     if args.reg_max == 16:
-        if args.architecture != "yolo" or args.model != "yolo26m.pt":
-            parser.error("当前 --reg-max 16 只预注册了 YOLO26m + yolo26m.pt")
-        model_yaml = "yolo26m-regmax16.yaml"
+        if args.architecture != "yolo":
+            parser.error("RT-DETR 不使用 YOLO --reg-max 16")
+        if args.model == "yolo26m.pt":
+            model_yaml = "yolo26m-regmax16.yaml"
+            inferred_model_source_kind = "yaml_transfer"
+        elif args.model == "yolo11m.pt":
+            inferred_model_source_kind = "checkpoint_native"
+        else:
+            parser.error(
+                "当前 --reg-max 16 只预注册了 YOLO26m YAML-transfer "
+                "或 YOLO11m checkpoint-native"
+            )
+    elif args.model == "yolo11m.pt":
+        parser.error("YOLO11m checkpoint-native 候选必须显式使用 --reg-max 16")
+    model_source_kind = (
+        inferred_model_source_kind
+        if args.model_source_kind == "auto"
+        else args.model_source_kind
+    )
+    if model_source_kind != inferred_model_source_kind:
+        parser.error(
+            "模型来源合同与候选不匹配："
+            f"model={args.model} reg_max={args.reg_max} "
+            f"需要 {inferred_model_source_kind}，收到 {model_source_kind}"
+        )
     if args.attempts is None:
         args.attempts = (
             "2:2,1:2,1:0"
@@ -290,6 +324,7 @@ def main() -> None:
             "object_crops": not args.object_crops,
             "tile_inference": not args.tile_inference,
             "band_order": args.band_order == DEFAULT_BAND_ORDER,
+            "run_name": args.run_name is None,
         }
         drift = [name for name, matches in regmax_contract.items() if not matches]
         if drift:
@@ -330,6 +365,8 @@ def main() -> None:
             )
 
     model_tag = args.model.removesuffix(".pt")
+    default_model = "rtdetr-l.pt" if args.architecture == "rtdetr" else "yolo26m.pt"
+    folder_model_tag = "" if args.model == default_model else f"_{model_tag}"
     architecture_tag = "_rtdetr" if args.architecture == "rtdetr" else ""
     if args.data in ("hsi16", "hsi16_phase"):
         percentile_tag = "" if (args.lower_percentile, args.upper_percentile) == (0.5, 99.5) else (
@@ -399,6 +436,7 @@ def main() -> None:
         f'    "MODE": "{args.mode}",\n'
         f'    "ARCHITECTURE": "{args.architecture}",\n'
         f'    "MODEL": "{args.model}",\n'
+        f'    "MODEL_SOURCE_KIND": "{model_source_kind}",\n'
         f'    "MODEL_YAML": "{model_yaml}",\n'
         f'    "REG_MAX": {args.reg_max},\n'
         f'    "EPOCHS": {args.epochs},\n'
@@ -430,7 +468,10 @@ def main() -> None:
     if count != 1:
         raise SystemExit("主脚本里没有找到 CONFIG 块，无法生成")
 
-    folder = HERE / f"kernel_{args.mode}{architecture_tag}{variant_tag}{inference_tag}"
+    folder = HERE / (
+        f"kernel_{args.mode}{architecture_tag}{folder_model_tag}"
+        f"{variant_tag}{inference_tag}"
+    )
     folder.mkdir(exist_ok=True)
     (folder / "run_hsi_yolo26.py").write_text(rendered, encoding="utf-8")
     metadata = {
@@ -461,6 +502,7 @@ def main() -> None:
     print(f"  运行名   : {run_name}")
     print(f"  配置     : mode={args.mode} architecture={args.architecture} "
           f"model={args.model} epochs={args.epochs} "
+          f"model_source_kind={model_source_kind} "
           f"model_yaml={model_yaml or '-'} reg_max={args.reg_max} "
           f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
           f"band_order={_band_order_csv(args.band_order)} "

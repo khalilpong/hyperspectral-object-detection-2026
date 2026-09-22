@@ -80,7 +80,7 @@ Targeted tests pass `60 passed`; the complete repository suite passes
 Audit command after a future download:
 
 ```text
-scripts/check_fixed_split_gate.py --architecture yolo --expected-dfl 1.5 --expected-optimizer-recipe adamw_lr001 --optimizer-contract <run>/optimizer_contract.json --gate 0.70443
+scripts/check_fixed_split_gate.py --architecture yolo --model yolo26m.pt --expected-model-source-kind checkpoint_native --expected-pretrained-weights-sha256 401CEA9AB23AD19246FF7744859816BC599F350E93C9DD30367B6F0A0745D0B7 --expected-dfl 1.5 --expected-optimizer-recipe adamw_lr001 --optimizer-contract <run>/optimizer_contract.json --gate 0.70443
 ```
 
 ## Package and scheduling
@@ -88,7 +88,7 @@ scripts/check_fixed_split_gate.py --architecture yolo --expected-dfl 1.5 --expec
 - local package: `kaggle_remote/kernel_ablation_lr001`
 - intended private slug: `zephyrpong/hsi-yolo26m-lr001-ablation`
 - runner SHA-256:
-  `E4BD6CCDE01FE83E08527A7E49016BF196CE6C03B64700033021856A320357AF`
+  `70BD10A61BFAB5E0E64A4B9D1888C5820A6DD97EA63EF9496F2A732E851E6614`
 - metadata SHA-256:
   `47CFD5EF074428F8CB6AE50831E17540EF33C04C415D0A03D9FC64E94E734715`
 - private metadata remains `is_private: true`.

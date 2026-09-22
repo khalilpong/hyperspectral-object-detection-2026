@@ -14,6 +14,7 @@
   HSI_MODE         smoke | ablation | full
   HSI_ARCHITECTURE yolo | rtdetr
   HSI_MODEL        预训练权重文件名，如 yolo26m.pt（需在代码目录里）
+  HSI_MODEL_SOURCE_KIND checkpoint_native | yaml_transfer
   HSI_MODEL_YAML   可选的 YAML 架构文件名；设置后把 HSI_MODEL 作为迁移权重
   HSI_REG_MAX      YOLO box distribution bins；1 为 YOLO26 基线，16 为 true DFL 候选
   HSI_EPOCHS       训练轮数
@@ -80,6 +81,7 @@ CONFIG = {
     "MODE": "smoke",
     "ARCHITECTURE": "yolo",
     "MODEL": "yolo26m.pt",
+    "MODEL_SOURCE_KIND": "checkpoint_native",
     "MODEL_YAML": "",
     "REG_MAX": 1,
     "EPOCHS": 1,
@@ -167,6 +169,7 @@ def _cfg(key: str):
 MODE = _cfg("MODE")
 ARCHITECTURE = _cfg("ARCHITECTURE")
 MODEL = _cfg("MODEL")
+MODEL_SOURCE_KIND = _cfg("MODEL_SOURCE_KIND")
 MODEL_YAML = _cfg("MODEL_YAML")
 REG_MAX = _cfg("REG_MAX")
 EPOCHS = _cfg("EPOCHS")
@@ -196,6 +199,11 @@ if ARCHITECTURE not in ("yolo", "rtdetr"):
     )
 if REG_MAX <= 0:
     raise SystemExit(f"HSI_REG_MAX 必须是正整数，收到 {REG_MAX}")
+if MODEL_SOURCE_KIND not in ("checkpoint_native", "yaml_transfer"):
+    raise SystemExit(
+        "HSI_MODEL_SOURCE_KIND 必须是 checkpoint_native 或 yaml_transfer，"
+        f"收到 {MODEL_SOURCE_KIND!r}"
+    )
 if not 0 <= LOWER_PERCENTILE < UPPER_PERCENTILE <= 100:
     raise SystemExit(
         "HSI 百分位必须满足 0 <= LOWER_PERCENTILE < UPPER_PERCENTILE <= 100，"
@@ -308,8 +316,11 @@ if DATA == "hsi16_phase" and (
         "并关闭 SpectralStem、object crops 与 tile inference"
     )
 if ARCHITECTURE == "rtdetr":
-    if MODEL_YAML or REG_MAX != 1:
-        raise SystemExit("RT-DETR 不使用 YOLO HSI_MODEL_YAML/HSI_REG_MAX")
+    if MODEL_SOURCE_KIND != "checkpoint_native" or MODEL_YAML or REG_MAX != 1:
+        raise SystemExit(
+            "RT-DETR 必须使用 checkpoint_native，且不使用 YOLO "
+            "HSI_MODEL_YAML/HSI_REG_MAX"
+        )
     if DATA != "hsi16":
         raise SystemExit("RT-DETR 远程路径目前只支持 HSI_DATA=hsi16")
     if SPECTRAL_STEM:
@@ -330,8 +341,13 @@ if ARCHITECTURE == "rtdetr":
         raise SystemExit("RT-DETR smoke/fixed 路径暂不支持 object crops 或 tile inference")
 elif RTDETR_NUM_DENOISING != 100:
     raise SystemExit("YOLO 路径不使用 HSI_RTDETR_NUM_DENOISING；必须保持默认 100")
-elif REG_MAX == 1 and MODEL_YAML:
-    raise SystemExit("HSI_MODEL_YAML 只用于显式的 YOLO reg_max 架构变体")
+elif MODEL_SOURCE_KIND == "yaml_transfer":
+    if not MODEL_YAML or REG_MAX == 1:
+        raise SystemExit(
+            "YOLO yaml_transfer 要求非空 HSI_MODEL_YAML 和非默认 HSI_REG_MAX"
+        )
+elif MODEL_YAML:
+    raise SystemExit("YOLO checkpoint_native 不得同时设置 HSI_MODEL_YAML")
 if BAND_ORDER != DEFAULT_BAND_ORDER:
     band_order_contract = {
         "mode": MODE == "ablation",
@@ -382,7 +398,8 @@ INPUT_ROOT = Path(os.environ.get("HSI_INPUT_ROOT", "/kaggle/input"))
 
 STATUS = {
     "config": {"MODE": MODE, "ARCHITECTURE": ARCHITECTURE,
-               "MODEL": MODEL, "MODEL_YAML": MODEL_YAML, "REG_MAX": REG_MAX,
+               "MODEL": MODEL, "MODEL_SOURCE_KIND": MODEL_SOURCE_KIND,
+               "MODEL_YAML": MODEL_YAML, "REG_MAX": REG_MAX,
                "EPOCHS": EPOCHS, "RUN_NAME": RUN_NAME,
                "ATTEMPTS": ATTEMPTS, "MULTISCALE": MULTISCALE, "DATA": DATA, "BANDS": BANDS,
                "BAND_ORDER": list(BAND_ORDER), "DATASET_ID": DATASET_ID,
@@ -724,19 +741,41 @@ def resolve_training_model_sources(
     code_root: Path,
     *,
     model: str,
+    model_source_kind: str,
     model_yaml: str,
     expected_reg_max: int,
-) -> tuple[Path, Path | None, dict[str, object] | None]:
+) -> tuple[Path, Path | None, dict[str, object]]:
     """Resolve a direct checkpoint or an audited YAML-plus-checkpoint pair."""
+    if model_source_kind not in ("checkpoint_native", "yaml_transfer"):
+        raise ValueError(f"Unsupported model_source_kind={model_source_kind!r}")
     packaged_weights = code_root / model
     if not model_yaml:
-        # Official assets not packaged locally (for example yolo26x.pt) are
-        # deliberately left as bare names so Ultralytics can download them.
-        return (
-            packaged_weights if packaged_weights.exists() else Path(model),
-            None,
-            None,
-        )
+        if model_source_kind != "checkpoint_native":
+            raise RuntimeError("yaml_transfer requires a non-empty MODEL_YAML")
+        if packaged_weights.is_file():
+            resolved_weights = packaged_weights
+            checkpoint_origin = "packaged_code_dataset"
+        else:
+            from ultralytics.utils.downloads import attempt_download_asset
+
+            resolved_weights = Path(attempt_download_asset(model)).resolve()
+            checkpoint_origin = "official_asset_download"
+            if not resolved_weights.is_file():
+                raise FileNotFoundError(
+                    f"Ultralytics did not resolve checkpoint {model!r}: {resolved_weights}"
+                )
+        audit = {
+            "model_source_kind": model_source_kind,
+            "checkpoint_origin": checkpoint_origin,
+            "pretrained_weights": model,
+            "pretrained_weights_path": str(resolved_weights.resolve()),
+            "pretrained_weights_sha256": sha256(resolved_weights),
+            "pretrained_weights_bytes": resolved_weights.stat().st_size,
+            "reg_max": expected_reg_max,
+        }
+        return resolved_weights, None, audit
+    if model_source_kind != "yaml_transfer":
+        raise RuntimeError("checkpoint_native must not set MODEL_YAML")
     if not packaged_weights.is_file():
         raise FileNotFoundError(
             "YAML 架构变体要求代码数据集内含精确的预训练权重，"
@@ -757,10 +796,14 @@ def resolve_training_model_sources(
             f"yaml={observed_reg_max!r}, config={expected_reg_max!r}"
         )
     audit = {
+        "model_source_kind": model_source_kind,
+        "checkpoint_origin": "packaged_code_dataset",
         "model_yaml": model_yaml,
         "model_yaml_sha256": sha256(model_yaml_path),
         "pretrained_weights": model,
+        "pretrained_weights_path": str(packaged_weights.resolve()),
         "pretrained_weights_sha256": sha256(packaged_weights),
+        "pretrained_weights_bytes": packaged_weights.stat().st_size,
         "reg_max": expected_reg_max,
     }
     return model_yaml_path, packaged_weights, audit
@@ -993,11 +1036,11 @@ def _main() -> None:
     model_source, load_weights, model_architecture_audit = resolve_training_model_sources(
         code_root,
         model=MODEL,
+        model_source_kind=MODEL_SOURCE_KIND,
         model_yaml=MODEL_YAML,
         expected_reg_max=REG_MAX,
     )
-    if model_architecture_audit is not None:
-        step("model_architecture_prepared", **model_architecture_audit)
+    step("model_architecture_prepared", **model_architecture_audit)
     run_dir = project / "runs" / RUN_NAME
     used = None
     for batch, workers, device in ATTEMPTS:
@@ -1085,6 +1128,7 @@ def _main() -> None:
         box_iou_loss=BOX_IOU_LOSS,
         optimizer_recipe=OPTIMIZER_RECIPE,
         optimizer_contract=optimizer_contract,
+        model_source_kind=MODEL_SOURCE_KIND,
         model_yaml=MODEL_YAML or None,
         reg_max=REG_MAX,
         model_contract=model_contract,

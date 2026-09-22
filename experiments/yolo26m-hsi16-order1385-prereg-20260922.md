@@ -72,7 +72,7 @@ true RGB.
 Audit a future downloaded run with:
 
 ```text
-scripts/check_fixed_split_gate.py --architecture yolo --model yolo26m.pt --expected-reg-max 1 --expected-dfl 1.5 --expected-band-order 13,8,5,0,1,2,3,4,6,7,9,10,11,12,14,15 --preparation-config <run>/data_contract/preparation_config.json --preparation-report <run>/data_contract/preparation_report.json --dataset-yaml <run>/data_contract/dataset.yaml --split-manifest <run>/data_contract/split_manifest.csv --gate 0.70443
+scripts/check_fixed_split_gate.py --architecture yolo --model yolo26m.pt --expected-model-source-kind checkpoint_native --expected-pretrained-weights-sha256 401CEA9AB23AD19246FF7744859816BC599F350E93C9DD30367B6F0A0745D0B7 --expected-reg-max 1 --expected-dfl 1.5 --expected-band-order 13,8,5,0,1,2,3,4,6,7,9,10,11,12,14,15 --preparation-config <run>/data_contract/preparation_config.json --preparation-report <run>/data_contract/preparation_report.json --dataset-yaml <run>/data_contract/dataset.yaml --split-manifest <run>/data_contract/split_manifest.csv --gate 0.70443
 ```
 
 The gate also requires one successful non-OOM/non-SHM attempt, 30 complete
@@ -85,19 +85,19 @@ or submission.
 - local package: `kaggle_remote/kernel_ablation_order1385`;
 - intended private slug: `zephyrpong/hsi-yolo26m-order1385-ablation`;
 - generated runner SHA-256:
-  `511A4C9E24FE6233BD8523541FC4EC85CCAE7512773A34B7900F97438CA9D1AA`;
+  `10E5E2136D606A929861C1E3FA3ABD2F5316F6B95C836E9A80107C9A6B58AAA7`;
 - metadata SHA-256:
   `6FBE3C7236C4AF9A3392AD792308661C696ED3BE2213FD2D24876ADBF518EFBD`;
 - staged preparation script SHA-256:
   `BCE78EAD7118B01BA85FB350E1CF6CEC90086E50F8C4C654CBC8F99299AB4C1A`;
 - staged main runner SHA-256:
-  `7988614FC33878098B4E2884C35234514503E843B1894EE55CB19E16ED135270`;
+  `F5D50B4C210D68226F96B1EF724A0ADF3AAB1049891C242033998052AF037864`;
 - generated runner is byte-equivalent to the main runner outside the expected
   CONFIG block; metadata is private.
 
 Do not upload while the live weekly GPU meter remains above 30 hours. The YOLO
 queue remains EIoU, then `adamw_lr001`, then `reg_max=16`; this channel-order
 candidate follows those more direct localization candidates and precedes the
-unpackaged YOLO11m/YOLO26x fallbacks. Before any future push, create and verify
+now-packaged YOLO11m and YOLO26x fallbacks. Before any future push, create and verify
 the synchronized private code-dataset version, confirm the slug has no existing
 RUNNING/COMPLETE version, and push at most once.

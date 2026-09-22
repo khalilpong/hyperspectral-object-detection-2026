@@ -14,12 +14,14 @@
   HSI_MODE         smoke | ablation | full
   HSI_ARCHITECTURE yolo | rtdetr
   HSI_MODEL        预训练权重文件名，如 yolo26m.pt（需在代码目录里）
+  HSI_MODEL_SOURCE_KIND checkpoint_native | yaml_transfer
   HSI_MODEL_YAML   可选的 YAML 架构文件名；设置后把 HSI_MODEL 作为迁移权重
   HSI_REG_MAX      YOLO box distribution bins；1 为 YOLO26 基线，16 为 true DFL 候选
   HSI_EPOCHS       训练轮数
   HSI_RUN_NAME     本次运行名（决定输出子目录和提交文件名）
   HSI_ATTEMPTS     batch/workers 降级序列，如 "8:2,6:2,4:2,4:0"
   HSI_MULTISCALE   1 = 7 尺度融合推理（出正式提交用），0 = 单尺度（快速验证用）
+  HSI_BAND_ORDER   普通 HSI16 的 16 个物理波段顺序，逗号分隔
   HSI_SEED         训练随机种子
   HSI_EXTRA_CHANNEL_INIT  random | zero；16 通道输入首层新增 13 通道的初始化方式
   HSI_SPECTRAL_STEM  1 = 可学习的 16→3 光谱投影后接完整预训练 YOLO，0 = 原始首层扩展
@@ -79,6 +81,7 @@ CONFIG = {
     "MODE": "ablation",
     "ARCHITECTURE": "yolo",
     "MODEL": "yolo26m.pt",
+    "MODEL_SOURCE_KIND": "yaml_transfer",
     "MODEL_YAML": "yolo26m-regmax16.yaml",
     "REG_MAX": 16,
     "EPOCHS": 30,
@@ -86,6 +89,7 @@ CONFIG = {
     "ATTEMPTS": "8:2,6:2,4:2,4:0",
     "MULTISCALE": 0,
     "DATA": "hsi16",
+    "BAND_ORDER": "5,8,13,0,1,2,3,4,6,7,9,10,11,12,14,15",
     "SEED": 2026,
     "EXTRA_CHANNEL_INIT": "random",
     "SPECTRAL_STEM": 0,
@@ -109,6 +113,29 @@ CONFIG = {
 IMGSZ = 1024
 ULTRALYTICS_VERSION = "8.4.147"
 MULTISCALE_SIZES = ["832", "896", "960", "1024", "1088", "1152", "1216"]
+DEFAULT_BAND_ORDER = (5, 8, 13, 0, 1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 14, 15)
+
+
+def _parse_band_order(value) -> tuple[int, ...]:
+    if isinstance(value, (tuple, list)):
+        bands = tuple(int(band) for band in value)
+    else:
+        try:
+            bands = tuple(int(item.strip()) for item in str(value).split(","))
+        except ValueError as error:
+            raise SystemExit(
+                "HSI_BAND_ORDER 必须是 16 个逗号分隔的整数"
+            ) from error
+    if len(bands) != 16 or set(bands) != set(range(16)):
+        raise SystemExit(
+            "HSI_BAND_ORDER 必须是物理波段 0..15 的一个完整排列，"
+            f"收到 {bands!r}"
+        )
+    return bands
+
+
+def _band_order_csv(band_order: tuple[int, ...]) -> str:
+    return ",".join(str(band) for band in band_order)
 
 
 def _cfg(key: str):
@@ -142,10 +169,12 @@ def _cfg(key: str):
 MODE = _cfg("MODE")
 ARCHITECTURE = _cfg("ARCHITECTURE")
 MODEL = _cfg("MODEL")
+MODEL_SOURCE_KIND = _cfg("MODEL_SOURCE_KIND")
 MODEL_YAML = _cfg("MODEL_YAML")
 REG_MAX = _cfg("REG_MAX")
 EPOCHS = _cfg("EPOCHS")
 RUN_NAME = _cfg("RUN_NAME")
+BAND_ORDER = _parse_band_order(_cfg("BAND_ORDER"))
 SEED = _cfg("SEED")
 EXTRA_CHANNEL_INIT = _cfg("EXTRA_CHANNEL_INIT")
 SPECTRAL_STEM = bool(_cfg("SPECTRAL_STEM"))
@@ -170,6 +199,11 @@ if ARCHITECTURE not in ("yolo", "rtdetr"):
     )
 if REG_MAX <= 0:
     raise SystemExit(f"HSI_REG_MAX 必须是正整数，收到 {REG_MAX}")
+if MODEL_SOURCE_KIND not in ("checkpoint_native", "yaml_transfer"):
+    raise SystemExit(
+        "HSI_MODEL_SOURCE_KIND 必须是 checkpoint_native 或 yaml_transfer，"
+        f"收到 {MODEL_SOURCE_KIND!r}"
+    )
 if not 0 <= LOWER_PERCENTILE < UPPER_PERCENTILE <= 100:
     raise SystemExit(
         "HSI 百分位必须满足 0 <= LOWER_PERCENTILE < UPPER_PERCENTILE <= 100，"
@@ -226,6 +260,21 @@ def _percentile_tag(value: float) -> str:
     return f"{value:g}".replace(".", "p")
 
 
+def _hsi16_dataset_id(
+    band_order: tuple[int, ...],
+    lower_percentile: float,
+    upper_percentile: float,
+) -> str:
+    percentile_suffix = (
+        f"p{_percentile_tag(lower_percentile)}_"
+        f"{_percentile_tag(upper_percentile)}"
+    )
+    if band_order == DEFAULT_BAND_ORDER:
+        return f"hsi16_shared_{percentile_suffix}"
+    order_tag = "-".join(str(band) for band in band_order)
+    return f"hsi16_order_{order_tag}_{percentile_suffix}"
+
+
 def _parse_attempts(text: str):
     """"batch:workers[:devices]"，devices 用 + 连接，例如 "8:2:0+1" = 两张卡 DDP，总 batch 8（每卡 4）。"""
     attempts = []
@@ -251,6 +300,8 @@ elif DATA not in ("hsi16", "hsi16_phase"):
     raise SystemExit(
         f"未知 DATA={DATA}，只支持 hsi16 / hsi16_phase / pseudo_rgb[:波段,波段,波段]"
     )
+if DATA != "hsi16" and BAND_ORDER != DEFAULT_BAND_ORDER:
+    raise SystemExit("非默认 HSI_BAND_ORDER 只适用于普通 HSI_DATA=hsi16")
 if DATA not in ("hsi16", "hsi16_phase") and EXTRA_CHANNEL_INIT != "random":
     raise SystemExit("--extra-channel-init zero 只适用于 16 通道 HSI 输入")
 if DATA not in ("hsi16", "hsi16_phase") and SPECTRAL_STEM:
@@ -265,8 +316,11 @@ if DATA == "hsi16_phase" and (
         "并关闭 SpectralStem、object crops 与 tile inference"
     )
 if ARCHITECTURE == "rtdetr":
-    if MODEL_YAML or REG_MAX != 1:
-        raise SystemExit("RT-DETR 不使用 YOLO HSI_MODEL_YAML/HSI_REG_MAX")
+    if MODEL_SOURCE_KIND != "checkpoint_native" or MODEL_YAML or REG_MAX != 1:
+        raise SystemExit(
+            "RT-DETR 必须使用 checkpoint_native，且不使用 YOLO "
+            "HSI_MODEL_YAML/HSI_REG_MAX"
+        )
     if DATA != "hsi16":
         raise SystemExit("RT-DETR 远程路径目前只支持 HSI_DATA=hsi16")
     if SPECTRAL_STEM:
@@ -287,8 +341,55 @@ if ARCHITECTURE == "rtdetr":
         raise SystemExit("RT-DETR smoke/fixed 路径暂不支持 object crops 或 tile inference")
 elif RTDETR_NUM_DENOISING != 100:
     raise SystemExit("YOLO 路径不使用 HSI_RTDETR_NUM_DENOISING；必须保持默认 100")
-elif REG_MAX == 1 and MODEL_YAML:
-    raise SystemExit("HSI_MODEL_YAML 只用于显式的 YOLO reg_max 架构变体")
+elif MODEL_SOURCE_KIND == "yaml_transfer":
+    if not MODEL_YAML or REG_MAX == 1:
+        raise SystemExit(
+            "YOLO yaml_transfer 要求非空 HSI_MODEL_YAML 和非默认 HSI_REG_MAX"
+        )
+elif MODEL_YAML:
+    raise SystemExit("YOLO checkpoint_native 不得同时设置 HSI_MODEL_YAML")
+if BAND_ORDER != DEFAULT_BAND_ORDER:
+    band_order_contract = {
+        "mode": MODE == "ablation",
+        "architecture": ARCHITECTURE == "yolo",
+        "model": MODEL == "yolo26m.pt",
+        "model_yaml": not MODEL_YAML,
+        "reg_max": REG_MAX == 1,
+        "epochs": EPOCHS == 30,
+        "seed": SEED == 2026,
+        "multiscale": not MULTISCALE,
+        "data": DATA == "hsi16",
+        "extra_channel_init": EXTRA_CHANNEL_INIT == "random",
+        "spectral_stem": not SPECTRAL_STEM,
+        "percentiles": (LOWER_PERCENTILE, UPPER_PERCENTILE) == (0.5, 99.5),
+        "cls_pw": CLS_PW == 0.0,
+        "scale": SCALE == 0.5,
+        "degrees": DEGREES == 0.0,
+        "dfl": DFL == 1.5,
+        "box_iou_loss": BOX_IOU_LOSS == "ciou",
+        "optimizer_recipe": OPTIMIZER_RECIPE == "auto",
+        "rtdetr_num_denoising": RTDETR_NUM_DENOISING == 100,
+        "object_crops": not OBJECT_CROPS,
+        "tile_inference": not TILE_INFERENCE,
+    }
+    drift = [name for name, matches in band_order_contract.items() if not matches]
+    if drift:
+        raise SystemExit(
+            "非默认 HSI_BAND_ORDER 是隔离的普通-HSI16 单变量实验；以下合同发生漂移："
+            + ", ".join(drift)
+        )
+
+if DATA == "hsi16":
+    DATASET_ID = _hsi16_dataset_id(
+        BAND_ORDER, LOWER_PERCENTILE, UPPER_PERCENTILE
+    )
+elif DATA == "hsi16_phase":
+    DATASET_ID = (
+        f"hsi16_phase_p{_percentile_tag(LOWER_PERCENTILE)}_"
+        f"{_percentile_tag(UPPER_PERCENTILE)}_l{PHASE_TARGET_LONG_EDGE}"
+    )
+else:
+    DATASET_ID = "pseudo_rgb_b" + "-".join(BANDS)
 IMAGE_EXT = "npy" if DATA in ("hsi16", "hsi16_phase") else "png"
 ON_KAGGLE = Path("/kaggle/working").exists()
 
@@ -297,9 +398,11 @@ INPUT_ROOT = Path(os.environ.get("HSI_INPUT_ROOT", "/kaggle/input"))
 
 STATUS = {
     "config": {"MODE": MODE, "ARCHITECTURE": ARCHITECTURE,
-               "MODEL": MODEL, "MODEL_YAML": MODEL_YAML, "REG_MAX": REG_MAX,
+               "MODEL": MODEL, "MODEL_SOURCE_KIND": MODEL_SOURCE_KIND,
+               "MODEL_YAML": MODEL_YAML, "REG_MAX": REG_MAX,
                "EPOCHS": EPOCHS, "RUN_NAME": RUN_NAME,
                "ATTEMPTS": ATTEMPTS, "MULTISCALE": MULTISCALE, "DATA": DATA, "BANDS": BANDS,
+               "BAND_ORDER": list(BAND_ORDER), "DATASET_ID": DATASET_ID,
                "EXTRA_CHANNEL_INIT": EXTRA_CHANNEL_INIT,
                "SPECTRAL_STEM": SPECTRAL_STEM,
                "LOWER_PERCENTILE": LOWER_PERCENTILE, "UPPER_PERCENTILE": UPPER_PERCENTILE,
@@ -332,6 +435,157 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest().upper()
+
+
+def audit_hsi16_preparation(
+    data_dir: Path,
+    *,
+    expected_band_order: tuple[int, ...],
+    lower_percentile: float,
+    upper_percentile: float,
+    source_manifest: Path,
+) -> dict[str, object]:
+    """Verify and fingerprint the ordinary-HSI16 dataset before training."""
+    import yaml
+
+    artifact_paths = {
+        "preparation_config": data_dir / "preparation_config.json",
+        "preparation_report": data_dir / "preparation_report.json",
+        "dataset_yaml": data_dir / "dataset.yaml",
+        "split_manifest": data_dir / "split_manifest.csv",
+    }
+    missing = [name for name, path in artifact_paths.items() if not path.is_file()]
+    if missing:
+        raise RuntimeError(f"普通 HSI16 数据缺少审计产物：{missing}")
+
+    contract = json.loads(
+        artifact_paths["preparation_config"].read_text(encoding="utf-8")
+    )
+    report = json.loads(
+        artifact_paths["preparation_report"].read_text(encoding="utf-8")
+    )
+    dataset = yaml.safe_load(
+        artifact_paths["dataset_yaml"].read_text(encoding="utf-8")
+    )
+    if not isinstance(contract, dict) or not isinstance(report, dict):
+        raise RuntimeError("普通 HSI16 preparation config/report 必须是 JSON object")
+    if not isinstance(dataset, dict):
+        raise RuntimeError("普通 HSI16 dataset.yaml 必须是 mapping")
+
+    expected_counts = {"train": 2400, "val": 600, "test": 1000}
+    counts = {
+        split: len(list((data_dir / "images" / split).glob("*.npy")))
+        for split in expected_counts
+    }
+    if counts != expected_counts:
+        raise RuntimeError(f"普通 HSI16 数据数量不符合预期：{counts}")
+
+    expected_manifest_sha = sha256(source_manifest)
+    output_manifest_sha = sha256(artifact_paths["split_manifest"])
+    expected_contract = {
+        "output_band_order": list(expected_band_order),
+        "channels": 16,
+        "encoding_dtype": "uint8",
+        "encoding_scale": "per_image_shared_selected_band_bounds",
+        "lower_percentile": lower_percentile,
+        "upper_percentile": upper_percentile,
+        "split_manifest_sha256": expected_manifest_sha,
+        "split_counts": {"train": 2400, "val": 600},
+    }
+    contract_mismatches = {
+        key: {"observed": contract.get(key), "expected": expected}
+        for key, expected in expected_contract.items()
+        if contract.get(key) != expected
+    }
+    if contract_mismatches:
+        raise RuntimeError(
+            f"普通 HSI16 preparation contract 漂移：{contract_mismatches}"
+        )
+
+    expected_dataset = {
+        "train": "images/train",
+        "val": "images/val",
+        "test": "images/test",
+        "channels": 16,
+        "hsi_band_order": list(expected_band_order),
+        "split_seed": 2026,
+        "training_scope": "fixed_2400_train_600_val",
+    }
+    dataset_mismatches = {
+        key: {"observed": dataset.get(key), "expected": expected}
+        for key, expected in expected_dataset.items()
+        if dataset.get(key) != expected
+    }
+    if dataset_mismatches:
+        raise RuntimeError(f"普通 HSI16 dataset.yaml 漂移：{dataset_mismatches}")
+    if len(dataset.get("names", {})) != 18:
+        raise RuntimeError("普通 HSI16 dataset.yaml 未确认 18 个比赛类别")
+    if Path(str(dataset.get("path", ""))).resolve() != data_dir.resolve():
+        raise RuntimeError("普通 HSI16 dataset.yaml path 与实际数据目录不一致")
+
+    encoding = report.get("encoding")
+    images = report.get("images")
+    manifest = report.get("manifest")
+    if not isinstance(encoding, dict) or not isinstance(images, dict):
+        raise RuntimeError("普通 HSI16 preparation report 缺少 encoding/images")
+    expected_encoding = {
+        "channels": 16,
+        "band_order": list(expected_band_order),
+        "lower_percentile": lower_percentile,
+        "upper_percentile": upper_percentile,
+        "shared_scale_across_channels": True,
+        "dtype": "uint8",
+    }
+    encoding_mismatches = {
+        key: {"observed": encoding.get(key), "expected": expected}
+        for key, expected in expected_encoding.items()
+        if encoding.get(key) != expected
+    }
+    if encoding_mismatches:
+        raise RuntimeError(
+            f"普通 HSI16 preparation report encoding 漂移：{encoding_mismatches}"
+        )
+    expected_report_counts = {"total": 4000, **expected_counts}
+    report_count_mismatches = {
+        key: {"observed": images.get(key), "expected": expected}
+        for key, expected in expected_report_counts.items()
+        if images.get(key) != expected
+    }
+    if report_count_mismatches:
+        raise RuntimeError(
+            f"普通 HSI16 preparation report counts 漂移：{report_count_mismatches}"
+        )
+    if report.get("contract") != contract:
+        raise RuntimeError("普通 HSI16 preparation report 与 preparation config 不一致")
+    if not isinstance(manifest, dict) or manifest.get("source_sha256") != expected_manifest_sha:
+        raise RuntimeError("普通 HSI16 preparation report 的源 manifest hash 不一致")
+    if manifest.get("output_sha256") != output_manifest_sha:
+        raise RuntimeError("普通 HSI16 preparation report 的输出 manifest hash 不一致")
+    if output_manifest_sha != expected_manifest_sha:
+        raise RuntimeError("普通 HSI16 输出 manifest 与代码数据集 manifest 不一致")
+    preparation_config_sha = sha256(artifact_paths["preparation_config"])
+    if report.get("preparation_config_sha256") != preparation_config_sha:
+        raise RuntimeError("普通 HSI16 preparation config hash 与 report 不一致")
+
+    return {
+        "dataset_id": data_dir.name,
+        "counts": counts,
+        "band_order": list(expected_band_order),
+        "channels": 16,
+        "lower_percentile": lower_percentile,
+        "upper_percentile": upper_percentile,
+        "shared_scale_across_channels": True,
+        "dtype": "uint8",
+        "training_scope": "fixed_2400_train_600_val",
+        "hashes": {
+            "preparation_config_sha256": preparation_config_sha,
+            "preparation_report_sha256": sha256(
+                artifact_paths["preparation_report"]
+            ),
+            "dataset_yaml_sha256": sha256(artifact_paths["dataset_yaml"]),
+            "split_manifest_sha256": output_manifest_sha,
+        },
+    }
 
 
 def step(name: str, **info) -> None:
@@ -487,19 +741,41 @@ def resolve_training_model_sources(
     code_root: Path,
     *,
     model: str,
+    model_source_kind: str,
     model_yaml: str,
     expected_reg_max: int,
-) -> tuple[Path, Path | None, dict[str, object] | None]:
+) -> tuple[Path, Path | None, dict[str, object]]:
     """Resolve a direct checkpoint or an audited YAML-plus-checkpoint pair."""
+    if model_source_kind not in ("checkpoint_native", "yaml_transfer"):
+        raise ValueError(f"Unsupported model_source_kind={model_source_kind!r}")
     packaged_weights = code_root / model
     if not model_yaml:
-        # Official assets not packaged locally (for example yolo26x.pt) are
-        # deliberately left as bare names so Ultralytics can download them.
-        return (
-            packaged_weights if packaged_weights.exists() else Path(model),
-            None,
-            None,
-        )
+        if model_source_kind != "checkpoint_native":
+            raise RuntimeError("yaml_transfer requires a non-empty MODEL_YAML")
+        if packaged_weights.is_file():
+            resolved_weights = packaged_weights
+            checkpoint_origin = "packaged_code_dataset"
+        else:
+            from ultralytics.utils.downloads import attempt_download_asset
+
+            resolved_weights = Path(attempt_download_asset(model)).resolve()
+            checkpoint_origin = "official_asset_download"
+            if not resolved_weights.is_file():
+                raise FileNotFoundError(
+                    f"Ultralytics did not resolve checkpoint {model!r}: {resolved_weights}"
+                )
+        audit = {
+            "model_source_kind": model_source_kind,
+            "checkpoint_origin": checkpoint_origin,
+            "pretrained_weights": model,
+            "pretrained_weights_path": str(resolved_weights.resolve()),
+            "pretrained_weights_sha256": sha256(resolved_weights),
+            "pretrained_weights_bytes": resolved_weights.stat().st_size,
+            "reg_max": expected_reg_max,
+        }
+        return resolved_weights, None, audit
+    if model_source_kind != "yaml_transfer":
+        raise RuntimeError("checkpoint_native must not set MODEL_YAML")
     if not packaged_weights.is_file():
         raise FileNotFoundError(
             "YAML 架构变体要求代码数据集内含精确的预训练权重，"
@@ -520,10 +796,14 @@ def resolve_training_model_sources(
             f"yaml={observed_reg_max!r}, config={expected_reg_max!r}"
         )
     audit = {
+        "model_source_kind": model_source_kind,
+        "checkpoint_origin": "packaged_code_dataset",
         "model_yaml": model_yaml,
         "model_yaml_sha256": sha256(model_yaml_path),
         "pretrained_weights": model,
+        "pretrained_weights_path": str(packaged_weights.resolve()),
         "pretrained_weights_sha256": sha256(packaged_weights),
+        "pretrained_weights_bytes": packaged_weights.stat().st_size,
         "reg_max": expected_reg_max,
     }
     return model_yaml_path, packaged_weights, audit
@@ -635,22 +915,14 @@ def _main() -> None:
 
     # ---------- 4. 生成训练数据（16 波段 NPY 或 伪RGB PNG） ----------
     if DATA in ("hsi16", "hsi16_phase"):
-        percentile_dir = (
-            f"hsi16_shared_p{_percentile_tag(LOWER_PERCENTILE)}_"
-            f"{_percentile_tag(UPPER_PERCENTILE)}"
-        )
         if DATA == "hsi16_phase":
-            percentile_dir = (
-                f"hsi16_phase_p{_percentile_tag(LOWER_PERCENTILE)}_"
-                f"{_percentile_tag(UPPER_PERCENTILE)}_l{PHASE_TARGET_LONG_EDGE}"
-            )
             free_gib = shutil.disk_usage(work_root).free / 2**30
             if free_gib < 45:
                 raise RuntimeError(
                     "相位感知 HSI16 预计需要约 32 GiB 数据缓存；"
                     f"工作盘只剩 {free_gib:.1f} GiB，低于 45 GiB 安全门槛"
                 )
-        data_dir = project / "data" / "processed" / percentile_dir
+        data_dir = project / "data" / "processed" / DATASET_ID
         prepare_script = (
             "scripts/prepare_phase_aware_multispectral.py"
             if DATA == "hsi16_phase"
@@ -662,18 +934,45 @@ def _main() -> None:
                        "--upper-percentile", f"{UPPER_PERCENTILE:g}"]
         if DATA == "hsi16_phase":
             prepare_cmd += ["--target-long-edge", str(PHASE_TARGET_LONG_EDGE)]
+        else:
+            prepare_cmd += ["--band-order", _band_order_csv(BAND_ORDER)]
     else:
         # 输出目录不能和上面放 split_manifest.csv 的 pseudo_rgb 目录重名
-        data_dir = project / "data" / "processed" / ("pseudo_rgb_b" + "-".join(BANDS))
+        data_dir = project / "data" / "processed" / DATASET_ID
         prepare_cmd = [sys.executable, "scripts/prepare_pseudo_rgb.py", "--raw-root", str(comp_root),
                        "--output", str(data_dir), "--workers", str(os.cpu_count() or 4), "--bands", *BANDS]
     code, tail = run(prepare_cmd, OUT / "prepare.log", project, env)
     if code != 0:
         raise RuntimeError("数据准备失败\n" + tail)
     counts = {s: len(list((data_dir / "images" / s).glob(f"*.{IMAGE_EXT}"))) for s in ("train", "val", "test")}
-    step("data_prepared", counts=counts, work_free_gb=round(shutil.disk_usage(work_root).free / 2**30, 1))
     if counts != {"train": 2400, "val": 600, "test": 1000}:
         raise RuntimeError(f"数据数量不符合预期 2400/600/1000：{counts}")
+    preparation_audit = None
+    if DATA == "hsi16":
+        preparation_audit = audit_hsi16_preparation(
+            data_dir,
+            expected_band_order=BAND_ORDER,
+            lower_percentile=LOWER_PERCENTILE,
+            upper_percentile=UPPER_PERCENTILE,
+            source_manifest=code_root / "split_manifest.csv",
+        )
+        audit_output = OUT / "data_contract"
+        audit_output.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "preparation_config.json",
+            "preparation_report.json",
+            "dataset.yaml",
+            "split_manifest.csv",
+        ):
+            shutil.copy2(data_dir / name, audit_output / name)
+    step(
+        "data_prepared",
+        counts=counts,
+        dataset_id=DATASET_ID,
+        preparation_audit=preparation_audit,
+        audit_artifact_dir="data_contract" if preparation_audit else None,
+        work_free_gb=round(shutil.disk_usage(work_root).free / 2**30, 1),
+    )
     if DATA == "pseudo_rgb":
         # 伪RGB 的划分是现场按种子重新生成的，必须和 16 波段用的 split_manifest.csv 完全一致，否则留出集分数没法比
         def _split(path):
@@ -737,11 +1036,11 @@ def _main() -> None:
     model_source, load_weights, model_architecture_audit = resolve_training_model_sources(
         code_root,
         model=MODEL,
+        model_source_kind=MODEL_SOURCE_KIND,
         model_yaml=MODEL_YAML,
         expected_reg_max=REG_MAX,
     )
-    if model_architecture_audit is not None:
-        step("model_architecture_prepared", **model_architecture_audit)
+    step("model_architecture_prepared", **model_architecture_audit)
     run_dir = project / "runs" / RUN_NAME
     used = None
     for batch, workers, device in ATTEMPTS:
@@ -829,6 +1128,7 @@ def _main() -> None:
         box_iou_loss=BOX_IOU_LOSS,
         optimizer_recipe=OPTIMIZER_RECIPE,
         optimizer_contract=optimizer_contract,
+        model_source_kind=MODEL_SOURCE_KIND,
         model_yaml=MODEL_YAML or None,
         reg_max=REG_MAX,
         model_contract=model_contract,

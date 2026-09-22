@@ -61,7 +61,7 @@ The private slug is `zephyrpong/hsi-yolo26m-eiou-ablation`; the tracked package 
 Audit a downloaded fixed result with:
 
 ```text
-scripts/check_fixed_split_gate.py --architecture yolo --expected-dfl 1.5 --expected-degrees 0 --expected-box-iou-loss eiou --gate 0.70443
+scripts/check_fixed_split_gate.py --architecture yolo --model yolo26m.pt --expected-model-source-kind checkpoint_native --expected-pretrained-weights-sha256 401CEA9AB23AD19246FF7744859816BC599F350E93C9DD30367B6F0A0745D0B7 --expected-dfl 1.5 --expected-degrees 0 --expected-box-iou-loss eiou --gate 0.70443
 ```
 
 Require 30 complete epochs, exact config/manifest, one successful non-OOM/non-SHM
@@ -71,8 +71,10 @@ data.
 
 ## Scheduling decision
 
-Do not push while the existing degrees=5 YOLO fixed job is running. If that job fails
-the gate, EIoU is the first YOLO fallback because it directly targets the repeated
-strict-localization failure pattern. The `[13,8,5]` pseudo-RGB and YOLO26x packages move
-behind EIoU. Push at most once after checking that the remote slug has no RUNNING or
-COMPLETE version and that Kaggle GPU quota remains.
+The degrees=5 job has already failed its gate, so EIoU is the first ready YOLO
+fallback because it directly targets the repeated strict-localization failure
+pattern. Its regenerated private runner SHA-256 is
+`A81756CA9C826A624DD8FC61BE207A8404CF492AC62DBB9F9D67CB92BF356F21`.
+Do not push until a synchronized private code-dataset version is verified, the
+remote slug has no RUNNING or COMPLETE version, and usable GPU quota is confirmed.
+Push at most once.

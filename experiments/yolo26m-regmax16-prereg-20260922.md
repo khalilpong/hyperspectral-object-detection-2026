@@ -89,7 +89,7 @@ pass inside that suite, and all changed/generated Python files compile.
 Audit a future downloaded run with:
 
 ```text
-scripts/check_fixed_split_gate.py --architecture yolo --model yolo26m.pt --expected-model-yaml yolo26m-regmax16.yaml --expected-reg-max 16 --expected-dfl 1.5 --model-contract <run>/model_contract.json --gate 0.70443
+scripts/check_fixed_split_gate.py --architecture yolo --model yolo26m.pt --expected-model-source-kind yaml_transfer --expected-pretrained-weights-sha256 401CEA9AB23AD19246FF7744859816BC599F350E93C9DD30367B6F0A0745D0B7 --expected-model-yaml yolo26m-regmax16.yaml --expected-reg-max 16 --expected-dfl 1.5 --model-contract <run>/model_contract.json --gate 0.70443
 ```
 
 The gate requires the exact config, one successful non-OOM/non-SHM attempt,
@@ -104,10 +104,14 @@ Failure rejects the route without full-data training or submission.
 - model YAML SHA-256:
   `B448F7A729718439F5BD6EC37C6F0091B8C637C017628F87A3B49F5A040C5412`;
 - generated runner SHA-256:
-  `7A1A3E291EC098088DC8A5C130233F585FDD88E4C0B7276DEA57F965E87F10FE`;
+  `BB55097AFF9C35A3731C9271BC6CE45FA06E3B77574E0EE9340B63D35E6108C8`;
 - metadata SHA-256:
   `474BA6D15A787F1E750D0CB18EE5E7D2BFFCE06774A79B45B9ECD573DD03AFF3`;
 - private metadata remains `is_private: true`.
+
+The regenerated runner now also records the explicit `yaml_transfer` source
+kind and the packaged checkpoint lineage; it remains byte-equivalent to the
+main runner outside its expected CONFIG block.
 
 Do not upload while the live weekly GPU meter remains above 30 hours. EIoU is
 still the first YOLO localization candidate and `adamw_lr001` remains second.
