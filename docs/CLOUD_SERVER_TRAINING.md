@@ -9,7 +9,7 @@
 
 | Kaggle 的限制 | 说明 |
 |---|---|
-| GPU 是 T4 | 16GB 显存够用，但算力较慢，m 模型 30 轮可能要 6 小时以上 |
+| GPU 是 T4 | 16GB 显存够用，但 m 模型固定 30 轮实测约 2.0~2.5 小时，且免费周额度已成为主要限制 |
 | 每周约 30 小时额度 | 留出对照 + 全量训练两次就可能用掉一半 |
 | 单次最长 12 小时 | 更大的模型或更多轮数跑不完 |
 | L4 等更好的卡 | 对本账号不开放 |
@@ -42,6 +42,77 @@ mosaic 增强会先建一张 `2048 × 2048 × 16` 的拼图画布（每张约 64
 ## 操作步骤
 
 以下命令在云服务器的终端里执行。所有东西都放在 `~/hsi` 下。
+
+### AutoDL：当前推荐的可审计 EIoU 路径
+
+当前第一优先级是已经预注册的单变量 EIoU fixed 实验。不要在服务器上临时拼
+`HSI_*` 参数；仓库提供的 wrapper 会清除外部遗留的 `HSI_*` 环境变量，再写入完整固定合同。
+
+#### 租用前的配置与费用边界
+
+- 首选 1 张 RTX 4090 24GB，至少 8 vCPU、**64GB RAM**、80GB 数据盘；
+- Python 必须为 3.11 或 3.12，基础镜像必须已带 CUDA 可用的 PyTorch；
+- 2026-09-22 官网公开标价快照为 RTX 4090 `1.88 元/小时`，会员价为 95 折；
+  这不是具体地区库存承诺，最终以登录后所选主机的即时价格为准；
+- fixed 预留 4 小时，若通过门禁后再做 full，合计预留 8 小时。创建付费实例前要按
+  控制台即时单价重新计算，并取得操作时确认；训练完立即关机。
+
+本地生成只含 EIoU 所需代码和 `yolo26m.pt` 的自审计上传包：
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\build_autodl_eiou_bundle.py `
+  --output .\artifacts\autodl\yolo26m_eiou_fixed_20260922.zip
+```
+
+生成器会先核对平铺代码与源文件哈希，再写 `bundle_manifest.json`。当前包不含原始比赛数据、
+Kaggle 凭据或历史输出。将该包和原始比赛 zip 放入 AutoDL 私有数据盘；不要放进“公开数据”。
+
+在实例内准备目录并解开代码包：
+
+```bash
+mkdir -p /root/autodl-tmp/hsi/{code,raw,work,outputs}
+unzip /root/autodl-tmp/hsi/yolo26m_eiou_fixed_20260922.zip -d /root/autodl-tmp/hsi/code
+python3 -m venv --system-site-packages /root/autodl-tmp/hsi/venv
+source /root/autodl-tmp/hsi/venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r /root/autodl-tmp/hsi/code/requirements-autodl-eiou.txt
+```
+
+先做**不解压、不训练**的付费环境检查：
+
+```bash
+python /root/autodl-tmp/hsi/code/run_autodl_eiou.py \
+  --code-root /root/autodl-tmp/hsi/code \
+  --input-root /root/autodl-tmp/hsi/raw \
+  --work-root /root/autodl-tmp/hsi/work \
+  --output-root /root/autodl-tmp/hsi/outputs \
+  --preflight-only
+```
+
+它要求恰好 1 张 24GB 级 NVIDIA GPU、CUDA PyTorch、至少 48GiB RAM、至少 45GiB
+工作盘余量，并逐文件验证 bundle；原始 zip 会检查路径穿越、符号链接和比赛目录锚点。
+只有看到 `PREFLIGHT_OK` 才启动 fixed：
+
+```bash
+tmux new -s hsi-eiou
+source /root/autodl-tmp/hsi/venv/bin/activate
+python /root/autodl-tmp/hsi/code/run_autodl_eiou.py \
+  --code-root /root/autodl-tmp/hsi/code \
+  --input-root /root/autodl-tmp/hsi/raw \
+  --work-root /root/autodl-tmp/hsi/work \
+  --output-root /root/autodl-tmp/hsi/outputs
+```
+
+wrapper 会安全解压、运行 exact `8:2,6:2,4:2,4:0` fixed 合同、调用
+`check_fixed_split_gate.py`，并输出：
+
+- `outputs/autodl_ablation_yolo26m_eiou_e30/fixed_gate.json`；
+- `autodl_audit/` 下的 `nvidia-smi`、`pip freeze`、bundle/profile 合同和 wrapper 日志；
+- 每个结果文件的 SHA-256 清单；
+- `outputs/autodl_ablation_yolo26m_eiou_e30.tar.gz` 及独立 archive SHA-256。
+
+wrapper **不会**启动 full，也不会上传或提交 Kaggle。fixed 只有在完整 30 epochs、数据/模型/
+优化器合同和哈希全部通过，且 best mAP50-95 `>= 0.70443` 时，才取得继续同配方 full 的资格。
 
 ### 1. 配置 Kaggle 命令行
 
@@ -151,14 +222,18 @@ tail -f ~/hsi/outputs/cloud_ablation_m1024_e30/train_b*_w*.log
 
 **ablation 模式**：看 `<RUN_NAME>/results.csv` 里 `metrics/mAP50-95(B)` 列的最大值。
 
-- **≥ 0.70117**（比基准 0.69817 高 0.003 以上）→ 有效，接着跑 `full` 模式出提交
+- **≥ 0.70443** → 通过当前预注册门禁，才可评估是否接着跑同配方 `full`
 - 低于这个值 → 增益在训练噪声范围内（轮间标准差约 0.0016），不值得跑全量
 
 **不要跳过 ablation 直接跑 full**。上一次伪标签实验为赶时间跳过验证，提交后 Kaggle 分数反而掉了 0.0094。
 
 ### 7. 提交
 
-`full` 模式跑完后，提交文件已经通过校验，直接交：
+`full` 模式跑完后，先把提交文件和权重下载回本地，复核 1,000 张图、框数量、哈希及
+单 checkpoint 合规性。上传文件可以先暂存，但 **Competition Submit 必须在操作时取得单独确认**；
+不要把 fixed smoke、门禁通过或 CSV checker 通过写成 Kaggle 分数。
+
+明确确认后才执行类似命令：
 
 ```bash
 kaggle competitions submit hyperspectral-object-detection-challenge-2026 -f ~/hsi/outputs/<RUN_NAME>/submission_<RUN_NAME>.csv -m "说明这次改了什么"

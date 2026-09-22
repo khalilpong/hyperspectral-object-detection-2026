@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 17:10（北京时间）
+> 最后更新：2026-09-22 18:00（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -37,6 +37,8 @@
 - YOLO26m `reg_max=16` 已完成可审计 fixed 预注册：它把当前 `reg_max=1` 的归一化 L1 路径改为真正 16-bin DFL，其他训练合同不变。真实权重审计显示可精确复用源 checkpoint 的 `99.4216%` 参数，regmax 专属 shape mismatch 仅 1,560 个源参数；真实 16 通道 forward/loss/backward 与 4 图 Trainer/contract/checkpoint smoke 均通过，全仓 `163 passed`。本地包 `kernel_ablation_rm16`（slug `zephyrpong/hsi-yolo26m-rm16-ablation`）与 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-regmax16-prereg-20260922.md`。
 - 普通 HSI16 `[13,8,5,...]` 通道顺序候选已完成可审计 fixed 预注册：它仍是同一 16 个物理 band、同一 shared P0.5-P99.5 uint8、同一标签/manifest，只把 pretrained RGB 三个数组槽位的物理映射从 `[5,8,13]` 改为 `[13,8,5]`。新 `preparation_config/report/dataset/manifest` 合同与哈希门禁、独立数据目录会拒绝静默复用 baseline NPY；合成集端到端测试证明数组只发生预期 permutation，标签、manifest 与 normalization bounds 不变。全仓 `177 passed`；本地私有包 `kernel_ablation_order1385`（slug `zephyrpong/hsi-yolo26m-order1385-ablation`）和 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-hsi16-order1385-prereg-20260922.md`。
 - YOLO11m HSI16 checkpoint-native 候选也已完成可审计 fixed 预注册：官方 Ultralytics Assets `v8.4.0` 权重已下载并验 SHA-256 `D5FFC1A6...305B95`（40,684,120 bytes）；真实架构是 `reg_max=16`、true DFL、非 end-to-end Detect。HSI16/18 类目标可精确复用源 checkpoint 的 `99.6848%` 参数；真实 forward/loss/backward、4 图 Trainer、model/optimizer contract、保存后 fresh reload 与全仓 `184 passed` 均通过。本地私有包 `kernel_ablation_yolo11m_rm16`（slug `zephyrpong/hsi-yolo11m-rm16-ablation`）及 code-dataset staging 已就绪但**未上传、未运行**；来源种类、权重大小和 SHA-256 都进入 status/gate，详见 `experiments/yolo11m-hsi16-prereg-20260922.md`。
+- 用户已明确同意改用 AutoDL，并给出总预算上限 **500 元**。2026-09-22 17:40 在 AutoDL 官方公开首页实时看到 RTX 4090 24GB 标价 `1.88 元/小时`、会员 95 折；4 小时 fixed 按普通价约 `7.52 元`，fixed+full 共 8 小时约 `15.04 元`。这只是官网公开标价，不是具体地区库存/主机合同：控制台当前停在登录页，尚未登录、充值、购买、开机或上传比赛数据。用户需要自己完成 AutoDL 登录；拿到具体 4090/CPU/RAM/数据盘/即时价后，创建付费实例前仍要做一次操作时确认。
+- AutoDL EIoU 固定链已本地封装：`scripts/run_autodl_eiou.py` 清除环境里的遗留 `HSI_*`，锁死 EIoU fixed 合同，验 GPU/RAM/磁盘、逐文件 bundle SHA、raw zip 路径安全和数据目录，记录 `nvidia-smi`/`pip freeze`，跑完自动执行 `0.70443` fixed gate 并把成功或失败日志打包；它绝不启动 full 或提交 Kaggle。清单同时拒绝漏列必需文件和未声明的顶层文件。`scripts/build_autodl_eiou_bundle.py` 生成的私有 bundle 为 41,035,826 bytes，SHA-256 `C3D3EA9FE14AF537F77537499C8510BF39D175900BAE570205834EC4D4544804`，解包后 23 个清单文件验哈希通过；全仓回归现为 `194 passed`。bundle 在忽略目录 `artifacts/autodl/`，未上传到任何第三方。
 - 面积分层框缩放已零 GPU 审计并否决：75 个 threshold/small-scale/large-scale 候选的三折 OOF 为 `0.70686997`，比 identity 高 `+0.00116178`，但比已经提交的全局 `×1.01` 低 `0.00063651`；full-val 最优本身就是全局 `×1.01`，折间选择也不一致。保留全局校准，停止继续扫框后处理。
 - 主办方于 2026-09-21 16:02（北京时间）发布官方帖子“【最终提醒】参赛团队信息收集即将截止”：所有团队须在 **9 月 23 日前**把团队信息发往所属赛道指定邮箱；邮件主题格式为“赛道名称－团队名称－队长姓名”，正文需列出全部队员姓名、所在单位及指导教师（如有）。逾期可能影响成绩认定和奖励。该提醒正文**没有给出目标检测赛道的指定收件邮箱**，只给出疑问联系人 `1522859637@qq.com`，不得把疑问邮箱擅自当作材料收件箱；也不能从 Kaggle 页面证明用户是否已经发送。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
 - 2026-09-22 约 14:00 的登录态 Submissions 页面显示 “5 days to go”，帮助文本为 **2026-09-27 16:00（新加坡/北京时间）**；这与此前 Rules 阶段日期不一致。提交当前确实开放，但在主办方正式澄清前，不把页面变化外推成其他 Phase/材料截止的自动延期。
@@ -50,9 +52,10 @@
 5. `dfl=2.0/2.5` 都已门禁失败；不要启动其 full-data，也不要上传两条作业各自产生的测试 CSV。
 6. 当前持续目标允许继续做合规的 Kaggle GPU 门禁实验；任何最终 Competition Submit 仍须在动作前单独确认，并复核单 checkpoint 血缘、Phase 2 数据覆盖与提交格式，绝不提交历史 ensemble。
 7. RT-DETR random fixed 已以 `0.69309 < 0.70443` 结束并完整审计；禁止推它的 full-data 包，也禁止提交其测试 CSV。RT-DETR 后续只按预注册顺序测试 zero-extra，再失败才测试 `num_denoising=200`。
-8. 2026-09-22 15:34 实时刷新后 GPU 配额显示 `38:03 / 30 hrs`，EIoU/RT-DETR-zero 作业都尚未创建。额度可用后才推送一次候选，不要用重复 push 试探。
-9. 单 checkpoint `boxscale101` 已在用户最终确认后提交成功：ref `56455800`，Public `0.63546`，比 `0.63072` 提升 `+0.00474`；当日额度剩 2 次。不要重复提交同一文件，也不要擅自勾选最终榜单候选。
-10. 立即向用户确认团队信息邮件是否已经发送；若未发送，先找到“目标检测赛道指定邮箱”，再由用户提供/确认团队名称、队长姓名、队员、单位和指导教师信息。发送邮件会对外传输个人信息，不能凭公告内容擅自代发。
+8. 2026-09-22 15:34 实时刷新后 Kaggle GPU 配额显示 `38:03 / 30 hrs`，EIoU/RT-DETR-zero 作业都尚未创建，不要用重复 push 试探。用户已转而批准 AutoDL、预算上限 500 元；官方公开 4090 标价已核到，但登录态库存/主机价仍未知。下一步先让用户在已打开的 AutoDL 标签页自行登录，再只读核对 1×4090、≥8 vCPU、≥64GB RAM、80GB 数据盘和按量价格；列出精确成本后，停在创建实例前确认。
+9. AutoDL 实例尚未创建，bundle/raw 也未上传。创建实例是付费动作，上传原始比赛数据是向第三方私有算力盘传输：两者都要在动作前明确目标和成本，且绝不能使用 AutoDL“公开数据”入口。实例存在后先跑 `--preflight-only`，只有 `PREFLIGHT_OK` 才启动 EIoU fixed；fixed 未过 `0.70443` 就停止，不跑 full。
+10. 单 checkpoint `boxscale101` 已在用户最终确认后提交成功：ref `56455800`，Public `0.63546`，比 `0.63072` 提升 `+0.00474`；当日额度剩 2 次。不要重复提交同一文件，也不要擅自勾选最终榜单候选。
+11. 立即向用户确认团队信息邮件是否已经发送；若未发送，先找到“目标检测赛道指定邮箱”，再由用户提供/确认团队名称、队长姓名、队员、单位和指导教师信息。发送邮件会对外传输个人信息，不能凭公告内容擅自代发。
 
 ### 成绩与合规状态
 
@@ -68,7 +71,7 @@
 ### 下一步可以试的（按优先级）
 
 1. `boxscale101` 已 `Success` 并把合规安全线提高到 `0.63546`，不要重复提交。当前最终榜单仍是 `0/2` 手工选择；截止前经用户单独确认后，至少手工选择 ref `56455800`，第二个安全候选可选 ref `56392305`，绝不能让 Kaggle 自动选中历史不合规 ensemble。
-2. RT-DETR random fixed 已以 `0.69309` 失败。GPU 配额恢复且远端没有目标版本后，YOLO 分支优先只推送一次 EIoU fixed；RT-DETR 分支可独立只推送一次 zero-extra fixed。两分支互不融合，门禁均为 `0.70443`。
+2. RT-DETR random fixed 已以 `0.69309` 失败。当前优先通过已经授权但尚未下单的 AutoDL 跑一次 EIoU fixed；若最终不租机，才继续等 Kaggle 配额恢复后推送一次。RT-DETR 分支可独立只推送一次 zero-extra fixed。两分支互不融合，门禁均为 `0.70443`。
 3. EIoU 若失败，先跑已预注册且有 runtime contract 的 `adamw_lr001`；它失败后跑 `reg_max=16`，再考虑已打包的普通 HSI16 `[13,8,5,...]` 通道顺序。公开 Notebook 的 `0.7394` 有 93.36% 验证泄漏，不能作为收益证据。
 4. RT-DETR zero 若也失败、仍有额度，再只跑一次 `num_denoising=200` fixed；不要添加 COCO 类名别名。
 5. `reg_max=16`、普通 HSI16 `[13,8,5,...]` 与 YOLO11m HSI16 都仍只有“值得一次 fixed 测量”的资格，绝不能把本地 smoke/合同、权重可迁移率或既有 `dfl=2.0/2.5` 写成精度收益。YOLO11m 已下载官方 checkpoint、完成哈希/血缘审计并打包，排在顺序候选之后。
@@ -262,7 +265,7 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | 两张卡 DDP | `--attempts 8:2:0+1` 可用，已实测跑通（yolo26l 每轮 3.1 分钟） |
 | 额度消耗 | 09-17~09-18 两天共用掉约 20 小时（每周约 30 小时，重置日以 Kaggle 页面为准） |
 
-当前 Kaggle 周额度实测为 `38:03 / 30 hrs`，新训练暂时被阻塞。若用户明确确认付费租用，AutoDL 按量 RTX 4090 24GB 是首选，建议 8 vCPU / 32GB RAM / 80GB 数据盘；从可用实例开始，单个 fixed 候选连同上传、解压和审计保守约 3–4 小时，只有过 `0.70443` 才继续 full-data，最早约 6–8 小时形成可提交候选。公开文档没有当前实时小时价，租机前必须在登录态控制台核对现价并由用户确认；见 [docs/CLOUD_SERVER_TRAINING.md](docs/CLOUD_SERVER_TRAINING.md)。
+当前 Kaggle 周额度实测为 `38:03 / 30 hrs`，新训练暂时被阻塞。用户已批准 AutoDL 且预算上限 500 元；官网公开首页当时显示 RTX 4090 24GB `1.88 元/小时`（会员 95 折），但登录态具体库存/主机价仍需用户登录后核对。首选按量 1×4090、≥8 vCPU、**≥64GB RAM**、80GB 数据盘；单个 fixed 连上传/解压/审计保守约 3–4 小时，只有过 `0.70443` 才继续 full-data，最早约 6–8 小时形成可提交候选。付费创建前仍须按所选主机精确重算并确认。自审计 bundle 和 wrapper 已就绪，见 [docs/CLOUD_SERVER_TRAINING.md](docs/CLOUD_SERVER_TRAINING.md)。
 
 ## 环境与操作的坑（本机）
 
@@ -291,6 +294,8 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | [docs/REBOOT_RECOVERY_HSI_E60.md](docs/REBOOT_RECOVERY_HSI_E60.md) | 长训练中断后如何安全续跑 |
 | `kaggle_remote/run_hsi_yolo26.py` | 远程训练流水线主脚本（Kaggle 和云服务器通用） |
 | `kaggle_remote/make_kernel.py` | 从主脚本生成 Kaggle Notebook |
+| `scripts/build_autodl_eiou_bundle.py` | 生成只含 EIoU fixed 所需代码/权重的逐文件验哈希 AutoDL 包 |
+| `scripts/run_autodl_eiou.py` | AutoDL 资源/数据预检、exact fixed、门禁和结果归档；不跑 full、不提交 |
 
 ## 工作纪律（这个项目用教训换来的）
 
