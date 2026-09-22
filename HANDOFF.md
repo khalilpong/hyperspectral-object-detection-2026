@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 07:52（北京时间）
+> 最后更新：2026-09-22 08:40（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -31,6 +31,7 @@
 - YOLO26 扩容路线已复核：YOLO26l 早已在同类 HSI16/1024/30-epoch fixed 实验中以 `0.69628` 失败，P2 与 1280 也有明确负信号，不重复；唯一未测的 YOLO26x 已预注册为最低优先级 fixed 后备 `kernel_ablation_yolo26x`（slug `zephyrpong/hsi-yolo26x-ablation`），只改 `yolo26m.pt -> yolo26x.pt`，保守单卡 attempts `2:2,1:2,1:0`。它**未上传、未运行**，排在 degrees=5、EIoU 与 `[13,8,5]` 之后。
 - RT-DETR 类名别名已否决：`people -> person` 与 `e-bike -> bicycle` 没有官方语义等价证据，不能把当前 4/18 精确 COCO 行迁移当作 bug。现成的 `num_denoising=200` 单变量包 `kernel_ablation_rtdetr_nd200` 已预注册（slug `zephyrpong/hsi-rtdetr-l-nd200-ablation`），它**未上传、未运行**，只在 random 与 zero extra-channel 两项 RT-DETR fixed 都失败后排队。
 - YOLO26m EIoU 已做成可审计 fixed 后备：只替换 `BboxLoss` 使用的 CIoU 符号，不改 TaskAlignedAssigner、DFL/L1、模型结构或推理；真实 YOLO26m 16 通道单 batch forward/loss/backward 全部 finite，首层梯度非零，全仓 `135 passed`。对应私有代码数据集新版本已 `ready` 且远端清单确认含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou`（slug `zephyrpong/hsi-yolo26m-eiou-ablation`）已尝试推送一次，但 Kaggle 在创建作业前以 `Maximum weekly GPU quota of 30.00 hours reached` 拒绝，故远端没有该 slug 的运行版本。账户页面 07:52 显示 GPU `32:33 / 30 hrs`；先等当前 RT-DETR 结束并让平台结算保留额度，不反复重推。门禁仍为 `0.70443`。
+- 主办方于 2026-09-21 16:02（北京时间）发布官方帖子“【最终提醒】参赛团队信息收集即将截止”：所有团队须在 **9 月 23 日前**把团队信息发往所属赛道指定邮箱；邮件主题格式为“赛道名称－团队名称－队长姓名”，正文需列出全部队员姓名、所在单位及指导教师（如有）。逾期可能影响成绩认定和奖励。该提醒正文**没有给出目标检测赛道的指定收件邮箱**，只给出疑问联系人 `1522859637@qq.com`，不得把疑问邮箱擅自当作材料收件箱；也不能从 Kaggle 页面证明用户是否已经发送。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
 
 ## 👉 接手后第一件事
 
@@ -42,6 +43,7 @@
 6. 当前持续目标允许继续做合规的 Kaggle GPU 门禁实验；任何最终 Competition Submit 仍须在动作前单独确认，并复核单 checkpoint 血缘、Phase 2 数据覆盖与提交格式，绝不提交历史 ensemble。
 7. 当前只监控 `zephyrpong/hsi-rtdetr-l-ablation` version 1；07:52 仍为 `RUNNING`，不要重启或重复推送。完成后下载到独立目录，用架构感知门禁器核验精确变量、30 个 epoch、训练状态与哈希。fixed 最佳 mAP50-95 必须达到 `0.70443` 才能跑同配方 full-data。`degrees=5` 已失败，不得与 RT-DETR 或任何其他 checkpoint 融合。
 8. 当前 GPU 配额显示 `32:33 / 30 hrs`，EIoU 作业尚未创建。先等 RT-DETR 终态和平台额度结算；额度可用后才推送一次 EIoU fixed，不要用重复 push 试探。
+9. 立即向用户确认团队信息邮件是否已经发送；若未发送，先找到“目标检测赛道指定邮箱”，再由用户提供/确认团队名称、队长姓名、队员、单位和指导教师信息。发送邮件会对外传输个人信息，不能凭公告内容擅自代发。
 
 ### 成绩与合规状态
 
