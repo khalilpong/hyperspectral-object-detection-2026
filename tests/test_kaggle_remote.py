@@ -82,6 +82,11 @@ def test_percentile_validation_and_stable_tags() -> None:
         module._validate_inference_fusion(0.0, 0.125)
     with pytest.raises(ValueError):
         module._validate_inference_fusion(0.74, -0.01)
+    assert module._parse_band_order(
+        "13,8,5,0,1,2,3,4,6,7,9,10,11,12,14,15"
+    ) == module.TARGET_HSI16_ORDER
+    with pytest.raises(module.argparse.ArgumentTypeError):
+        module._parse_band_order("0,1,2")
 
 
 def test_make_kernel_renders_isolated_p1_p99_variant(tmp_path: Path, monkeypatch) -> None:
@@ -601,6 +606,83 @@ def test_make_kernel_renders_isolated_custom_pseudo_rgb_band_order(
     ]
 
 
+def test_make_kernel_renders_isolated_ordinary_hsi16_band_order(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--band-order",
+            "13,8,5,0,1,2,3,4,6,7,9,10,11,12,14,15",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_order1385"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_order1385_e30"' in rendered
+    assert (
+        '"BAND_ORDER": "13,8,5,0,1,2,3,4,6,7,9,10,11,12,14,15"'
+        in rendered
+    )
+    assert '"REG_MAX": 1' in rendered
+    assert '"BOX_IOU_LOSS": "ciou"' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-order1385-ablation"
+    assert metadata["is_private"] is True
+
+
+@pytest.mark.parametrize(
+    "extra_arguments",
+    (
+        ["--mode", "full", "--epochs", "30"],
+        ["--mode", "ablation", "--epochs", "1"],
+        ["--mode", "ablation", "--epochs", "30", "--seed", "7"],
+        ["--mode", "ablation", "--epochs", "30", "--multiscale"],
+        ["--mode", "ablation", "--epochs", "30", "--reg-max", "16"],
+        ["--mode", "ablation", "--epochs", "30", "--box-iou-loss", "eiou"],
+        ["--mode", "ablation", "--epochs", "30", "--run-name", "ambiguous"],
+    ),
+)
+def test_make_kernel_rejects_ordinary_hsi16_band_order_contract_drift(
+    tmp_path: Path, monkeypatch, extra_arguments: list[str]
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            *extra_arguments,
+            "--model",
+            "yolo26m.pt",
+            "--band-order",
+            "13,8,5,0,1,2,3,4,6,7,9,10,11,12,14,15",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        module.main()
+
+
 def test_make_kernel_renders_single_checkpoint_supported_multiscale_full_candidate(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -709,6 +791,19 @@ def test_remote_runner_builds_rtdetr_command_without_yolo_only_gains(
     assert "--degrees" not in command
     assert "--box-iou-loss" not in command
     assert "--no-val" not in command
+
+
+def test_remote_runner_isolates_ordinary_hsi16_band_order_dataset_identity() -> None:
+    module = _load_runner()
+    target_order = (13, 8, 5, 0, 1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 14, 15)
+
+    assert (
+        module._hsi16_dataset_id(module.DEFAULT_BAND_ORDER, 0.5, 99.5)
+        == "hsi16_shared_p005_995"
+    )
+    assert module._hsi16_dataset_id(target_order, 0.5, 99.5) == (
+        "hsi16_order_13-8-5-0-1-2-3-4-6-7-9-10-11-12-14-15_p005_995"
+    )
 
 
 def test_remote_runner_builds_yolo_command_with_box_iou_loss(

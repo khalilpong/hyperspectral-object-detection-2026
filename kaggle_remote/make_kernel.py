@@ -46,6 +46,26 @@ CROP_CODE_DATASET = f"{USERNAME}/hsi-object-crop-code"
 # 比赛数据无法通过 competition_sources 挂载（Kaggle 会静默丢弃该字段），
 # 所以把原始比赛 zip 上传成了私有数据集，改用 dataset_sources 挂载
 RAW_DATASET = f"{USERNAME}/hsi-competition-raw"
+DEFAULT_BAND_ORDER = (5, 8, 13, 0, 1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 14, 15)
+TARGET_HSI16_ORDER = (13, 8, 5, 0, 1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 14, 15)
+
+
+def _parse_band_order(text: str) -> tuple[int, ...]:
+    try:
+        bands = tuple(int(value.strip()) for value in text.split(","))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "band order must be 16 comma-separated integers"
+        ) from error
+    if len(bands) != 16 or set(bands) != set(range(16)):
+        raise argparse.ArgumentTypeError(
+            "band order must be a complete permutation of physical bands 0..15"
+        )
+    return bands
+
+
+def _band_order_csv(band_order: tuple[int, ...]) -> str:
+    return ",".join(str(band) for band in band_order)
 
 
 def _percentile_tag(value: float) -> str:
@@ -132,6 +152,12 @@ def main() -> None:
                         help="训练数据：hsi16（普通 16 波段 NPY，默认）、hsi16_phase（相位感知 16 波段 NPY）、"
                              "pseudo_rgb（波段 5/8/13 伪RGB PNG）"
                              "或 pseudo_rgb:3,6,8（自定义三个波段）")
+    parser.add_argument(
+        "--band-order",
+        type=_parse_band_order,
+        default=DEFAULT_BAND_ORDER,
+        help="普通 HSI16 的 16 个物理波段顺序，逗号分隔",
+    )
     parser.add_argument("--seed", type=int, default=2026, help="训练随机种子")
     parser.add_argument("--extra-channel-init", choices=("random", "zero"), default="random",
                         help="16 通道输入首层新增通道的初始化；zero 会保留预训练 RGB 初始函数")
@@ -201,6 +227,13 @@ def main() -> None:
         parser.error(str(error))
     if (args.object_crops or args.tile_inference) and args.data != "hsi16":
         parser.error("--object-crops/--tile-inference 目前只支持 --data hsi16")
+    if args.data != "hsi16" and args.band_order != DEFAULT_BAND_ORDER:
+        parser.error("非默认 --band-order 只适用于 --data hsi16")
+    if args.band_order not in {DEFAULT_BAND_ORDER, TARGET_HSI16_ORDER}:
+        parser.error(
+            "当前只预注册了普通 HSI16 基线顺序和候选顺序 "
+            + _band_order_csv(TARGET_HSI16_ORDER)
+        )
     if args.spectral_stem and args.data != "hsi16":
         parser.error("--spectral-stem 目前只支持 --data hsi16")
     if args.spectral_stem and args.extra_channel_init != "random":
@@ -256,11 +289,43 @@ def main() -> None:
             "optimizer_recipe": args.optimizer_recipe == "auto",
             "object_crops": not args.object_crops,
             "tile_inference": not args.tile_inference,
+            "band_order": args.band_order == DEFAULT_BAND_ORDER,
         }
         drift = [name for name, matches in regmax_contract.items() if not matches]
         if drift:
             parser.error(
                 "--reg-max 16 是隔离的单变量架构实验；以下合同发生漂移："
+                + ", ".join(drift)
+            )
+    if args.band_order != DEFAULT_BAND_ORDER:
+        band_order_contract = {
+            "mode": args.mode == "ablation",
+            "architecture": args.architecture == "yolo",
+            "model": args.model == "yolo26m.pt",
+            "reg_max": args.reg_max == 1,
+            "epochs": args.epochs == 30,
+            "seed": args.seed == 2026,
+            "multiscale": not args.multiscale,
+            "data": args.data == "hsi16",
+            "extra_channel_init": args.extra_channel_init == "random",
+            "spectral_stem": not args.spectral_stem,
+            "percentiles": (args.lower_percentile, args.upper_percentile)
+            == (0.5, 99.5),
+            "cls_pw": args.cls_pw == 0.0,
+            "scale": args.scale == 0.5,
+            "degrees": args.degrees == 0.0,
+            "dfl": args.dfl == 1.5,
+            "box_iou_loss": args.box_iou_loss == "ciou",
+            "optimizer_recipe": args.optimizer_recipe == "auto",
+            "rtdetr_num_denoising": args.rtdetr_num_denoising == 100,
+            "object_crops": not args.object_crops,
+            "tile_inference": not args.tile_inference,
+            "run_name": args.run_name is None,
+        }
+        drift = [name for name, matches in band_order_contract.items() if not matches]
+        if drift:
+            parser.error(
+                "非默认 --band-order 是隔离的普通-HSI16 单变量实验；以下合同发生漂移："
                 + ", ".join(drift)
             )
 
@@ -271,7 +336,13 @@ def main() -> None:
             f"_p{_percentile_tag(args.lower_percentile)}_"
             f"{_percentile_tag(args.upper_percentile)}"
         )
-        data_tag = ("_phase" if args.data == "hsi16_phase" else "") + percentile_tag
+        if args.data == "hsi16_phase":
+            data_tag = "_phase" + percentile_tag
+        else:
+            band_order_tag = (
+                "" if args.band_order == DEFAULT_BAND_ORDER else "_order1385"
+            )
+            data_tag = band_order_tag + percentile_tag
     elif args.data == "pseudo_rgb":
         if (args.lower_percentile, args.upper_percentile) != (0.5, 99.5):
             parser.error("--lower-percentile/--upper-percentile 只适用于 hsi16")
@@ -335,6 +406,7 @@ def main() -> None:
         f'    "ATTEMPTS": "{args.attempts}",\n'
         f'    "MULTISCALE": {1 if args.multiscale else 0},\n'
         f'    "DATA": "{args.data}",\n'
+        f'    "BAND_ORDER": "{_band_order_csv(args.band_order)}",\n'
         f'    "SEED": {args.seed},\n'
         f'    "EXTRA_CHANNEL_INIT": "{args.extra_channel_init}",\n'
         f'    "SPECTRAL_STEM": {1 if args.spectral_stem else 0},\n'
@@ -391,6 +463,7 @@ def main() -> None:
           f"model={args.model} epochs={args.epochs} "
           f"model_yaml={model_yaml or '-'} reg_max={args.reg_max} "
           f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
+          f"band_order={_band_order_csv(args.band_order)} "
           f"seed={args.seed} extra_channel_init={args.extra_channel_init} "
           f"spectral_stem={args.spectral_stem} "
           f"cls_pw={args.cls_pw:g} "

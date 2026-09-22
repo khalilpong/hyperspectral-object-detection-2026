@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 15:34（北京时间）
+> 最后更新：2026-09-22 16:21（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -35,6 +35,7 @@
 - YOLO26m EIoU 已做成可审计 fixed 后备：只替换 `BboxLoss` 使用的 CIoU 符号，不改 TaskAlignedAssigner、DFL/L1、模型结构或推理；真实 YOLO26m 16 通道单 batch forward/loss/backward 全部 finite，首层梯度非零。对应私有代码数据集新版本已 `ready` 且远端清单确认含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou`（slug `zephyrpong/hsi-yolo26m-eiou-ablation`）的一次 push 在创建前因周 GPU 配额超限被拒，远端没有该 slug。2026-09-22 15:34 实时刷新后账户页面显示 GPU `38:03 / 30 hrs`，因此不重推；门禁仍为 `0.70443`。
 - YOLO26m 有效 AdamW `lr0=0.001` 已做成本地可审计 fixed 后备：真实 runtime contract 证明普通 `auto` 基线实际是 `AdamW(lr=0.000455,beta1=0.9,warmup_bias_lr=0)`，新配方仍是 AdamW、beta1 `0.9`、warmup-bias `0`，唯一有效变化为初始 LR `0.000455→0.001`。两条真实 16 通道 1-epoch smoke 均通过，全仓 `141 passed`；本地包 `kernel_ablation_lr001`（slug `zephyrpong/hsi-yolo26m-lr001-ablation`）未上传、未运行，排在 EIoU 后、`[13,8,5]` 与 YOLO26x 前，详见 `experiments/yolo26m-adamw-lr001-prereg-20260922.md`。
 - YOLO26m `reg_max=16` 已完成可审计 fixed 预注册：它把当前 `reg_max=1` 的归一化 L1 路径改为真正 16-bin DFL，其他训练合同不变。真实权重审计显示可精确复用源 checkpoint 的 `99.4216%` 参数，regmax 专属 shape mismatch 仅 1,560 个源参数；真实 16 通道 forward/loss/backward 与 4 图 Trainer/contract/checkpoint smoke 均通过，全仓 `163 passed`。本地包 `kernel_ablation_rm16`（slug `zephyrpong/hsi-yolo26m-rm16-ablation`）与 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-regmax16-prereg-20260922.md`。
+- 普通 HSI16 `[13,8,5,...]` 通道顺序候选已完成可审计 fixed 预注册：它仍是同一 16 个物理 band、同一 shared P0.5-P99.5 uint8、同一标签/manifest，只把 pretrained RGB 三个数组槽位的物理映射从 `[5,8,13]` 改为 `[13,8,5]`。新 `preparation_config/report/dataset/manifest` 合同与哈希门禁、独立数据目录会拒绝静默复用 baseline NPY；合成集端到端测试证明数组只发生预期 permutation，标签、manifest 与 normalization bounds 不变。全仓 `177 passed`；本地私有包 `kernel_ablation_order1385`（slug `zephyrpong/hsi-yolo26m-order1385-ablation`）和 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-hsi16-order1385-prereg-20260922.md`。
 - 面积分层框缩放已零 GPU 审计并否决：75 个 threshold/small-scale/large-scale 候选的三折 OOF 为 `0.70686997`，比 identity 高 `+0.00116178`，但比已经提交的全局 `×1.01` 低 `0.00063651`；full-val 最优本身就是全局 `×1.01`，折间选择也不一致。保留全局校准，停止继续扫框后处理。
 - 主办方于 2026-09-21 16:02（北京时间）发布官方帖子“【最终提醒】参赛团队信息收集即将截止”：所有团队须在 **9 月 23 日前**把团队信息发往所属赛道指定邮箱；邮件主题格式为“赛道名称－团队名称－队长姓名”，正文需列出全部队员姓名、所在单位及指导教师（如有）。逾期可能影响成绩认定和奖励。该提醒正文**没有给出目标检测赛道的指定收件邮箱**，只给出疑问联系人 `1522859637@qq.com`，不得把疑问邮箱擅自当作材料收件箱；也不能从 Kaggle 页面证明用户是否已经发送。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
 - 2026-09-22 约 14:00 的登录态 Submissions 页面显示 “5 days to go”，帮助文本为 **2026-09-27 16:00（新加坡/北京时间）**；这与此前 Rules 阶段日期不一致。提交当前确实开放，但在主办方正式澄清前，不把页面变化外推成其他 Phase/材料截止的自动延期。
@@ -67,10 +68,10 @@
 
 1. `boxscale101` 已 `Success` 并把合规安全线提高到 `0.63546`，不要重复提交。当前最终榜单仍是 `0/2` 手工选择；截止前经用户单独确认后，至少手工选择 ref `56455800`，第二个安全候选可选 ref `56392305`，绝不能让 Kaggle 自动选中历史不合规 ensemble。
 2. RT-DETR random fixed 已以 `0.69309` 失败。GPU 配额恢复且远端没有目标版本后，YOLO 分支优先只推送一次 EIoU fixed；RT-DETR 分支可独立只推送一次 zero-extra fixed。两分支互不融合，门禁均为 `0.70443`。
-3. EIoU 若失败，先跑已预注册且有 runtime contract 的 `adamw_lr001`；它失败后再考虑 HSI16 前三槽位改为 `[13,8,5]`。公开 Notebook 的 `0.7394` 有 93.36% 验证泄漏，不能作为收益证据。
+3. EIoU 若失败，先跑已预注册且有 runtime contract 的 `adamw_lr001`；它失败后跑 `reg_max=16`，再考虑已打包的普通 HSI16 `[13,8,5,...]` 通道顺序。公开 Notebook 的 `0.7394` 有 93.36% 验证泄漏，不能作为收益证据。
 4. RT-DETR zero 若也失败、仍有额度，再只跑一次 `num_denoising=200` fixed；不要添加 COCO 类名别名。
-5. EIoU 与 `adamw_lr001` 若失败，下一项更直接的定位架构候选是已预注册的 YOLO26m `reg_max=16`；它仍只有“值得一次 fixed 测量”的资格，绝不能把本地 smoke 或既有 `dfl=2.0/2.5` 写成精度收益。其后才比较尚未打包的 YOLO11m HSI16 与 HSI16 `[13,8,5,...]` 通道顺序。
-6. 只有 EIoU、`adamw_lr001`、`reg_max=16`、YOLO11m/通道顺序等更直接候选都失败且额度仍足，才运行已预注册的 YOLO26x fixed。YOLO26l、P2、1280 不得重复。
+5. `reg_max=16` 与普通 HSI16 `[13,8,5,...]` 都仍只有“值得一次 fixed 测量”的资格，绝不能把本地 smoke/合同或既有 `dfl=2.0/2.5` 写成精度收益。顺序候选之后才实现并比较 YOLO11m HSI16；它的官方 checkpoint 尚未在本地下载和哈希审计。
+6. 只有 EIoU、`adamw_lr001`、`reg_max=16`、普通 HSI16 通道顺序与 YOLO11m 等更直接候选都失败且额度仍足，才运行已预注册的 YOLO26x fixed。YOLO26l、P2、1280 不得重复。
 7. `dfl=2.0/2.5`、YOLO26m zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、tile TTA、尺度来源/权重和 RT-DETR random-init 均已否决。框校准只保留已过 OOF 的全局 `1.01×1.01`，不继续扫参。
 8. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 

@@ -44,6 +44,7 @@
 - YOLO26m EIoU 已预注册为更直接的严格定位后备：只替换 `BboxLoss` 的 CIoU，不改 assigner、DFL/L1、模型或推理；真实 16 通道 YOLO26m 单 batch forward/loss/backward finite。私有代码数据集新版本已 `ready` 且远端清单含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou` 的一次 push 在创建前因周 GPU 配额超限拒绝，远端没有运行版本。2026-09-22 15:34 实时刷新后仍为 `38:03 / 30 hrs`；额度真实恢复后只重试一次，按 `0.70443` 门禁。
 - YOLO26m `adamw_lr001` 已预注册为 EIoU 后的本地后备：两条真实 16 通道 smoke 的 runtime contract 证明基线和新配方都使用 AdamW、beta1 `0.9`、warmup-bias `0`，唯一有效差异为初始 LR `0.000455→0.001`；全仓 `141 passed`。本地包 `kernel_ablation_lr001` 未上传、未运行，排在 `[13,8,5]` 与 YOLO26x 前；必须随下载结果审计 `optimizer_contract.json` 并继续使用 `0.70443` 门禁。
 - YOLO26m `reg_max=16` 已预注册为后续直接定位架构候选：真实权重审计显示精确复用 `99.4216%` 的源 checkpoint 参数，regmax 专属 mismatch 只有 1,560 个源参数；真实 16 通道 true-DFL forward/loss/backward、4 图 Trainer runtime contract/checkpoint smoke 和全仓 `163 passed`。本地包 `kernel_ablation_rm16` 与 code-dataset staging 已就绪但未上传、未运行；未来结果必须同时审计 `model_contract.json`，固定门禁仍为 `0.70443`。
+- 普通 HSI16 `[13,8,5,...]` 通道顺序已预注册为后续 fixed 单变量：仍使用相同 16-band 集合、shared P0.5-P99.5、标签和 seed-2026 manifest，只把 pretrained RGB 三个位置从物理 `[5,8,13]` 映射改为 `[13,8,5]`；没有官方波长证据，不能宣称是真 RGB。独立数据身份和 preparation config/report/dataset/manifest 哈希门禁会拒绝 baseline NPY 混用；全仓 `177 passed`，本地包 `kernel_ablation_order1385` 与 code-dataset staging 已就绪但未上传、未运行。
 - 面积分层框缩放已否决：75 个候选的三折 OOF `0.70686997`，比 identity 高但比已提交的全局 `×1.01` 低 `0.00063651`；full-val 最优仍等价于全局 `×1.01`，折间选择不一致。不要继续扫框校准。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置；`boxscale101` 成功后今日余 2 次。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。2026-09-22 15:34 实时 GPU 周额度为 `38:03 / 30 hrs`，不得用重复 push 试探后备作业。
@@ -54,8 +55,8 @@
 
 1. `boxscale101` 已 `Success`，Public `0.63546`、ref `56455800`，不得重复提交。最终榜单目前仍是 `0/2` 手工选择；截止前经用户单独确认后至少选择 ref `56455800`，第二个安全候选可选 ref `56392305`，绝不能让自动选择落到历史 ensemble。
 2. RT-DETR random fixed 已按 `0.70443` 门禁失败，禁止推送 `kernel_full_rtdetr` 或上传其测试 CSV。GPU 配额恢复后，RT-DETR 分支只允许一次 zero-extra fixed；再失败才一次 `num_denoising=200`，不要加类名别名。
-3. GPU 配额可用且确认远端不存在 EIoU 版本后，YOLO 分支只推送一次已预注册 EIoU fixed，精确审计 `--expected-box-iou-loss eiou`。失败后排 `adamw_lr001`（核验 runtime optimizer contract），再排已预注册 `reg_max=16`（核验 runtime model contract）。
-4. YOLO11m HSI16 与 HSI16 `[13,8,5,...]` 通道顺序都是尚无合法分数的后备 fixed 候选，排在上述直接定位候选之后；不得引用公开泄漏的 `0.7394`，也不得把既有 dfl-gain 当作 regmax16 的等价证据。
+3. GPU 配额可用且确认远端不存在 EIoU 版本后，YOLO 分支只推送一次已预注册 EIoU fixed，精确审计 `--expected-box-iou-loss eiou`。失败后排 `adamw_lr001`（核验 runtime optimizer contract），再排已预注册 `reg_max=16`（核验 runtime model contract），之后才是已打包的普通 HSI16 `[13,8,5,...]`（核验四份 preparation artifacts 与哈希）。
+4. YOLO11m HSI16 尚无合法分数且官方 checkpoint 还未完成本地下载/哈希审计，排在上述已打包候选之后；不得引用公开泄漏的 `0.7394`，也不得把既有 dfl-gain 当作 regmax16 的等价证据。
 5. `dfl=2.0/2.5`、scale、`cls_pw`、phase-aware、e45、horizontal-flip、YOLO26m zero-init、object-crop、SpectralStem、tile TTA、尺度来源/权重、RT-DETR random 和继续扫框校准均已否决，不重复投入。
 6. 更直接候选都失败且额度仍足时，才运行一次已预注册 YOLO26x fixed；门禁器显式使用 `--model yolo26x.pt`。不要重跑 YOLO26l、P2 或 1280。
 7. 对任何新候选重新核对哈希、格式和额度；每次最终 Competition Submit 前都让用户确认。

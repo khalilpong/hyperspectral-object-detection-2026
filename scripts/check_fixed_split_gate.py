@@ -12,6 +12,7 @@ from pathlib import Path
 
 METRIC_COLUMN = "metrics/mAP50-95(B)"
 MAP50_COLUMN = "metrics/mAP50(B)"
+DEFAULT_BAND_ORDER = (5, 8, 13, 0, 1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 14, 15)
 
 
 def _sha256(path: Path) -> str:
@@ -41,6 +42,204 @@ def _expect_float(observed: object, expected: float, name: str) -> None:
         raise ValueError(
             f"Optimizer contract mismatch for {name}: observed={value!r}, expected={expected!r}"
         )
+
+
+def _parse_band_order(text: str) -> tuple[int, ...]:
+    try:
+        bands = tuple(int(value.strip()) for value in text.split(","))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "band order must be 16 comma-separated integers"
+        ) from error
+    if len(bands) != 16 or set(bands) != set(range(16)):
+        raise argparse.ArgumentTypeError(
+            "band order must be a complete permutation of physical bands 0..15"
+        )
+    return bands
+
+
+def _percentile_tag(value: float) -> str:
+    scaled = round(value * 10)
+    if abs(value * 10 - scaled) < 1e-9:
+        return f"{scaled:03d}"
+    return f"{value:g}".replace(".", "p")
+
+
+def _expected_hsi16_dataset_id(band_order: tuple[int, ...]) -> str:
+    percentile_suffix = f"p{_percentile_tag(0.5)}_{_percentile_tag(99.5)}"
+    if band_order == DEFAULT_BAND_ORDER:
+        return f"hsi16_shared_{percentile_suffix}"
+    order_tag = "-".join(str(band) for band in band_order)
+    return f"hsi16_order_{order_tag}_{percentile_suffix}"
+
+
+def _audit_preparation_artifacts(
+    *,
+    steps: dict[str, object],
+    preparation_config_path: Path,
+    preparation_report_path: Path,
+    dataset_yaml_path: Path,
+    split_manifest_path: Path,
+    expected_band_order: tuple[int, ...],
+) -> dict[str, str]:
+    import yaml
+
+    expected_counts = {"train": 2400, "val": 600, "test": 1000}
+    expected_dataset_id = _expected_hsi16_dataset_id(expected_band_order)
+    data_step = steps.get("data_prepared")
+    if not isinstance(data_step, dict):
+        raise ValueError("status.json is missing the data_prepared audit step")
+    if data_step.get("counts") != expected_counts:
+        raise ValueError(
+            "status data_prepared counts mismatch: "
+            f"{data_step.get('counts')!r} != {expected_counts!r}"
+        )
+    if data_step.get("dataset_id") != expected_dataset_id:
+        raise ValueError(
+            "status data_prepared dataset identity mismatch: "
+            f"{data_step.get('dataset_id')!r} != {expected_dataset_id!r}"
+        )
+    preparation_audit = data_step.get("preparation_audit")
+    if not isinstance(preparation_audit, dict):
+        raise ValueError("status data_prepared is missing preparation_audit")
+    expected_audit = {
+        "dataset_id": expected_dataset_id,
+        "counts": expected_counts,
+        "band_order": list(expected_band_order),
+        "channels": 16,
+        "lower_percentile": 0.5,
+        "upper_percentile": 99.5,
+        "shared_scale_across_channels": True,
+        "dtype": "uint8",
+        "training_scope": "fixed_2400_train_600_val",
+    }
+    audit_mismatches = {
+        key: {"observed": preparation_audit.get(key), "expected": expected}
+        for key, expected in expected_audit.items()
+        if preparation_audit.get(key) != expected
+    }
+    if audit_mismatches:
+        raise ValueError(f"status preparation audit mismatch: {audit_mismatches}")
+
+    contract = json.loads(preparation_config_path.read_text(encoding="utf-8"))
+    report = json.loads(preparation_report_path.read_text(encoding="utf-8"))
+    dataset = yaml.safe_load(dataset_yaml_path.read_text(encoding="utf-8"))
+    if not isinstance(contract, dict) or not isinstance(report, dict):
+        raise ValueError("preparation config/report must contain JSON objects")
+    if not isinstance(dataset, dict):
+        raise ValueError("dataset.yaml must contain a mapping")
+
+    manifest_sha = _sha256(split_manifest_path)
+    with split_manifest_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames != ["image_id", "split"]:
+            raise ValueError("split manifest header must be exactly image_id,split")
+        manifest_ids: set[str] = set()
+        manifest_counts = {"train": 0, "val": 0}
+        for row in reader:
+            image_id = row["image_id"].strip()
+            split = row["split"].strip()
+            if not image_id or image_id in manifest_ids:
+                raise ValueError("split manifest contains an empty or duplicate image_id")
+            if split not in manifest_counts:
+                raise ValueError(f"split manifest contains invalid split {split!r}")
+            manifest_ids.add(image_id)
+            manifest_counts[split] += 1
+    if manifest_counts != {"train": 2400, "val": 600}:
+        raise ValueError(f"split manifest counts mismatch: {manifest_counts}")
+    config_sha = _sha256(preparation_config_path)
+    hashes = {
+        "preparation_config_sha256": config_sha,
+        "preparation_report_sha256": _sha256(preparation_report_path),
+        "dataset_yaml_sha256": _sha256(dataset_yaml_path),
+        "split_manifest_sha256": manifest_sha,
+    }
+    if preparation_audit.get("hashes") != hashes:
+        raise ValueError(
+            "status preparation artifact hashes do not match downloaded artifacts"
+        )
+
+    expected_contract = {
+        "schema_version": 1,
+        "method": "compact_4x4_unpack_shared_scale_v1",
+        "cell_size": 4,
+        "mosaic_band_order": "row-major",
+        "output_band_order": list(expected_band_order),
+        "channels": 16,
+        "encoding_dtype": "uint8",
+        "encoding_scale": "per_image_shared_selected_band_bounds",
+        "lower_percentile": 0.5,
+        "upper_percentile": 99.5,
+        "split_manifest_sha256": manifest_sha,
+        "split_counts": {"train": 2400, "val": 600},
+    }
+    if contract != expected_contract:
+        raise ValueError(
+            "preparation contract mismatch: "
+            f"observed={contract!r}, expected={expected_contract!r}"
+        )
+
+    expected_dataset = {
+        "train": "images/train",
+        "val": "images/val",
+        "test": "images/test",
+        "channels": 16,
+        "hsi_band_order": list(expected_band_order),
+        "hsi_encoding": "per-image shared 0.5th-to-99.5th-percentile uint8",
+        "split_seed": 2026,
+        "training_scope": "fixed_2400_train_600_val",
+    }
+    dataset_mismatches = {
+        key: {"observed": dataset.get(key), "expected": expected}
+        for key, expected in expected_dataset.items()
+        if dataset.get(key) != expected
+    }
+    if dataset_mismatches:
+        raise ValueError(f"dataset.yaml preparation mismatch: {dataset_mismatches}")
+    if len(dataset.get("names", {})) != 18:
+        raise ValueError("dataset.yaml does not contain exactly 18 class names")
+
+    encoding = report.get("encoding")
+    images = report.get("images")
+    manifest = report.get("manifest")
+    if report.get("contract") != contract:
+        raise ValueError("preparation report contract does not match config")
+    if not isinstance(encoding, dict) or not isinstance(images, dict):
+        raise ValueError("preparation report is missing encoding/images")
+    expected_encoding = {
+        "channels": 16,
+        "band_order": list(expected_band_order),
+        "lower_percentile": 0.5,
+        "upper_percentile": 99.5,
+        "shared_scale_across_channels": True,
+        "dtype": "uint8",
+    }
+    encoding_mismatches = {
+        key: {"observed": encoding.get(key), "expected": expected}
+        for key, expected in expected_encoding.items()
+        if encoding.get(key) != expected
+    }
+    if encoding_mismatches:
+        raise ValueError(
+            f"preparation report encoding mismatch: {encoding_mismatches}"
+        )
+    expected_report_counts = {"total": 4000, **expected_counts}
+    count_mismatches = {
+        key: {"observed": images.get(key), "expected": expected}
+        for key, expected in expected_report_counts.items()
+        if images.get(key) != expected
+    }
+    if count_mismatches:
+        raise ValueError(f"preparation report count mismatch: {count_mismatches}")
+    if not isinstance(manifest, dict):
+        raise ValueError("preparation report is missing manifest hashes")
+    if manifest.get("source_sha256") != manifest_sha or manifest.get(
+        "output_sha256"
+    ) != manifest_sha:
+        raise ValueError("preparation report manifest hash mismatch")
+    if report.get("preparation_config_sha256") != config_sha:
+        raise ValueError("preparation report config hash mismatch")
+    return hashes
 
 
 def _audit_optimizer_contract(contract: dict[str, object], recipe: str) -> None:
@@ -139,6 +338,11 @@ def audit_fixed_split(
     expected_optimizer_recipe: str = "auto",
     optimizer_contract_path: Path | None = None,
     model_contract_path: Path | None = None,
+    expected_band_order: tuple[int, ...] | None = None,
+    preparation_config_path: Path | None = None,
+    preparation_report_path: Path | None = None,
+    dataset_yaml_path: Path | None = None,
+    split_manifest_path: Path | None = None,
     expected_extra_channel_init: str = "random",
     expected_rtdetr_num_denoising: int = 100,
     gate: float,
@@ -179,6 +383,23 @@ def audit_fixed_split(
         raise ValueError(
             "expected_extra_channel_init must be either 'random' or 'zero'"
         )
+    preparation_paths = (
+        preparation_config_path,
+        preparation_report_path,
+        dataset_yaml_path,
+        split_manifest_path,
+    )
+    if expected_band_order is not None:
+        expected_band_order = tuple(int(band) for band in expected_band_order)
+        if len(expected_band_order) != 16 or set(expected_band_order) != set(range(16)):
+            raise ValueError("expected_band_order must be a permutation of 0..15")
+        if any(path is None for path in preparation_paths):
+            raise ValueError(
+                "expected_band_order requires preparation config/report, "
+                "dataset YAML, and split manifest paths"
+            )
+    elif any(path is not None for path in preparation_paths):
+        raise ValueError("preparation artifact paths require expected_band_order")
 
     status = json.loads(status_path.read_text(encoding="utf-8"))
     if status.get("result") != "success":
@@ -202,34 +423,39 @@ def audit_fixed_split(
             f"{{'ARCHITECTURE': {{'observed': {observed_architecture!r}, "
             f"'expected': {expected_architecture!r}}}}}"
         )
-    _expect_equal(
-        config,
-        {
-            "MODE": "ablation",
-            "MODEL": expected_model,
-            "MODEL_YAML": expected_model_yaml or "",
-            "REG_MAX": expected_reg_max,
-            "EPOCHS": 30,
-            "MULTISCALE": False,
-            "DATA": "hsi16",
-            "SEED": 2026,
-            "EXTRA_CHANNEL_INIT": expected_extra_channel_init,
-            "SPECTRAL_STEM": False,
-            "LOWER_PERCENTILE": 0.5,
-            "UPPER_PERCENTILE": 99.5,
-            "CLS_PW": 0.0,
-            "SCALE": 0.5,
-            "DEGREES": expected_degrees,
-            "DFL": 1.5 if expected_architecture == "rtdetr" else expected_dfl,
-            "BOX_IOU_LOSS": expected_box_iou_loss,
-            "OPTIMIZER_RECIPE": expected_optimizer_recipe,
-            "RTDETR_NUM_DENOISING": expected_rtdetr_num_denoising,
-            "PHASE_TARGET_LONG_EDGE": 1024,
-            "OBJECT_CROPS": False,
-            "TILE_INFERENCE": False,
-            "IMGSZ": 1024,
-        },
-    )
+    expected_config = {
+        "MODE": "ablation",
+        "MODEL": expected_model,
+        "MODEL_YAML": expected_model_yaml or "",
+        "REG_MAX": expected_reg_max,
+        "EPOCHS": 30,
+        "MULTISCALE": False,
+        "DATA": "hsi16",
+        "SEED": 2026,
+        "EXTRA_CHANNEL_INIT": expected_extra_channel_init,
+        "SPECTRAL_STEM": False,
+        "LOWER_PERCENTILE": 0.5,
+        "UPPER_PERCENTILE": 99.5,
+        "CLS_PW": 0.0,
+        "SCALE": 0.5,
+        "DEGREES": expected_degrees,
+        "DFL": 1.5 if expected_architecture == "rtdetr" else expected_dfl,
+        "BOX_IOU_LOSS": expected_box_iou_loss,
+        "OPTIMIZER_RECIPE": expected_optimizer_recipe,
+        "RTDETR_NUM_DENOISING": expected_rtdetr_num_denoising,
+        "PHASE_TARGET_LONG_EDGE": 1024,
+        "OBJECT_CROPS": False,
+        "TILE_INFERENCE": False,
+        "IMGSZ": 1024,
+    }
+    if expected_band_order is not None:
+        expected_config.update(
+            {
+                "BAND_ORDER": list(expected_band_order),
+                "DATASET_ID": _expected_hsi16_dataset_id(expected_band_order),
+            }
+        )
+    _expect_equal(config, expected_config)
 
     steps = status.get("steps")
     if not isinstance(steps, dict):
@@ -250,6 +476,21 @@ def audit_fixed_split(
         raise ValueError(
             "Expected exactly one successful non-OOM/non-SHM training attempt, "
             f"found {len(successful_attempts)}"
+        )
+
+    preparation_hashes: dict[str, str] = {}
+    if expected_band_order is not None:
+        assert preparation_config_path is not None
+        assert preparation_report_path is not None
+        assert dataset_yaml_path is not None
+        assert split_manifest_path is not None
+        preparation_hashes = _audit_preparation_artifacts(
+            steps=steps,
+            preparation_config_path=preparation_config_path,
+            preparation_report_path=preparation_report_path,
+            dataset_yaml_path=dataset_yaml_path,
+            split_manifest_path=split_manifest_path,
+            expected_band_order=expected_band_order,
         )
 
     optimizer_contract = None
@@ -328,6 +569,11 @@ def audit_fixed_split(
     }
     if expected_dfl is not None:
         contract["expected_dfl"] = expected_dfl
+    if expected_band_order is not None:
+        contract["expected_band_order"] = list(expected_band_order)
+        contract["expected_dataset_id"] = _expected_hsi16_dataset_id(
+            expected_band_order
+        )
     if expected_architecture == "yolo":
         contract["expected_degrees"] = expected_degrees
         contract["expected_box_iou_loss"] = expected_box_iou_loss
@@ -349,6 +595,7 @@ def audit_fixed_split(
         "hashes": {
             "status_sha256": _sha256(status_path),
             "results_sha256": _sha256(results_path),
+            **preparation_hashes,
             **(
                 {"optimizer_contract_sha256": _sha256(optimizer_contract_path)}
                 if optimizer_contract_path is not None
@@ -387,6 +634,11 @@ def main() -> None:
     )
     parser.add_argument("--optimizer-contract", type=Path)
     parser.add_argument("--model-contract", type=Path)
+    parser.add_argument("--expected-band-order", type=_parse_band_order)
+    parser.add_argument("--preparation-config", type=Path)
+    parser.add_argument("--preparation-report", type=Path)
+    parser.add_argument("--dataset-yaml", type=Path)
+    parser.add_argument("--split-manifest", type=Path)
     parser.add_argument(
         "--expected-extra-channel-init",
         choices=("random", "zero"),
@@ -414,6 +666,11 @@ def main() -> None:
         expected_optimizer_recipe=args.expected_optimizer_recipe,
         optimizer_contract_path=args.optimizer_contract,
         model_contract_path=args.model_contract,
+        expected_band_order=args.expected_band_order,
+        preparation_config_path=args.preparation_config,
+        preparation_report_path=args.preparation_report,
+        dataset_yaml_path=args.dataset_yaml,
+        split_manifest_path=args.split_manifest,
         expected_extra_channel_init=args.expected_extra_channel_init,
         expected_rtdetr_num_denoising=args.expected_rtdetr_num_denoising,
         gate=args.gate,
