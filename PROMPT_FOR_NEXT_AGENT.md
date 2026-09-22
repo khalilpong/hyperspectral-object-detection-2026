@@ -47,9 +47,10 @@
 - 普通 HSI16 `[13,8,5,...]` 通道顺序已预注册为后续 fixed 单变量：仍使用相同 16-band 集合、shared P0.5-P99.5、标签和 seed-2026 manifest，只把 pretrained RGB 三个位置从物理 `[5,8,13]` 映射改为 `[13,8,5]`；没有官方波长证据，不能宣称是真 RGB。独立数据身份和 preparation config/report/dataset/manifest 哈希门禁会拒绝 baseline NPY 混用；全仓 `177 passed`，本地包 `kernel_ablation_order1385` 与 code-dataset staging 已就绪但未上传、未运行。
 - YOLO11m HSI16 checkpoint-native fixed 候选已完成本地预注册：官方 Ultralytics Assets `v8.4.0` 的 `yolo11m.pt` 为 40,684,120 bytes，SHA-256 `D5FFC1A674953A08E11A8D21E022781B1B23A19B730AFC309290BD9FB5305B95`；真实 live 架构为 `reg_max=16`、true DFL、非 end-to-end Detect。HSI16/18 类可精确复用 `99.6848%` 源参数，真实 forward/loss/backward、4 图 Trainer、model/optimizer contract、fresh reload 与全仓 `184 passed` 均通过。本地私有包 `kernel_ablation_yolo11m_rm16` 和 code-dataset staging 已就绪但未上传、未运行；future gate 必须核验 source kind、权重大小/hash 和 runtime model contract，不能引用公开泄漏 Notebook 的 `0.7394`。
 - 面积分层框缩放已否决：75 个候选的三折 OOF `0.70686997`，比 identity 高但比已提交的全局 `×1.01` 低 `0.00063651`；full-val 最优仍等价于全局 `×1.01`，折间选择不一致。不要继续扫框校准。
+- distinct-scale support-count 排序已否决：固定一个 checkpoint、七尺度、`fusion_iou=0.74` 与全局框 `×1.01`，三折和 full 都保留现有 confidence-mass `support_gain=0.125`；最佳 count-only `gamma=0.08` 为 `0.70590884`，比 incumbent `0.70750647` 低 `0.00159764`。不要生成 CSV，也不要继续扫置信度排序。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
 - 提交额度：**每天 3 次**，北京时间 08:00 重置；`boxscale101` 成功后今日余 2 次。Kaggle 只保留历史最佳，提交更差的文件不会降低排名。2026-09-22 15:34 实时 GPU 周额度为 `38:03 / 30 hrs`，不得用重复 push 试探后备作业。
-- 用户已明确批准 AutoDL、总预算上限 500 元。2026-09-22 官方公开首页实时显示 RTX 4090 24GB `1.88 元/小时`、会员 95 折；4 小时 fixed 普通价约 `7.52 元`，fixed+full 共 8 小时约 `15.04 元`。控制台目前仍在登录页，未购买/开机/上传；用户必须自己登录。登录后只读核对具体 1×4090、≥8 vCPU、≥64GB RAM、80GB 数据盘和即时按量价，列出精确最坏成本，再停在创建付费实例前取得操作时确认。
+- 用户已登录、绑定 AutoDL 并充值 30 元，总预算上限 500 元。北京 B 区 329 机与内蒙 B 区 181 机都在用户分别确认后的最终点击时被平台判定无空闲 GPU，均未创建、未扣费。当前已把重庆 A 区 739 机（ID `gh1ez37ml9`）配置到最终按钮：RTX6000D 84GB、25 核、120GB RAM、30GB 系统盘、免费 50GB 数据盘、PyTorch2.5.1/Python3.12/Ubuntu22.04/CUDA12.4，页面显示 `6/8` 空闲，按量 `6.46 元/小时`，约 4/8 小时 `25.84/51.68 元`。只有用户回复 `确认创建重庆739机并开机` 后才能点击；任何旧主机确认都不能沿用。
 - AutoDL EIoU wrapper/bundle 已准备并全仓 `195 passed`：`scripts/build_autodl_eiou_bundle.py` 生成的 41,035,836-byte bundle SHA-256 为 `849E82D90865FBC42510AEE11E4382AC2EE48FE625964554CE2672C10981D243`；`scripts/run_autodl_eiou.py` 锁死 fixed 合同、做硬件/逐文件/raw-zip 安全预检、自动 gate 和结果归档，并拒绝清单漏列必需文件或出现未声明顶层文件，且永不启动 full 或 Submit。本地原始 ZIP `data/raw/hyperspectral-object-detection-challenge-2026.zip`（6,694,200,518 bytes，SHA-256 `C99BE7F2F930813E0846F64931851466F8DEB3720E35AB0F5800EB0F02E0B8AE`）已按真实 `Annotations/VIS` 布局通过 wrapper 审计。bundle 在 ignored `artifacts/autodl/`，尚未上传。具体流程见 `docs/CLOUD_SERVER_TRAINING.md`。
 - Kaggle GPU：免费账号每周约 30 小时；e45 fixed split 使用约 3.1 小时，phase-aware fixed split 使用约 2.5 小时，`cls_pw=0.25` fixed split 使用约 2.29 小时，`scale=0.3` fixed split 使用约 2.06 小时。启动任何新训练前先实时复核余额。
 - 主办方官方帖子要求所有团队在 **2026-09-23 前**发送团队信息，逾期可能影响成绩认定与奖励；邮件主题为“赛道名称－团队名称－队长姓名”，正文需列出全部队员、单位及指导教师（如有）。帖子没有写明目标检测赛道的指定收件邮箱，只给了疑问联系人 `1522859637@qq.com`，不得擅自把它当材料收件箱或代发个人信息。先让用户确认是否已经发送，并取得准确收件邮箱与具体个人信息。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
@@ -58,7 +59,7 @@
 
 1. `boxscale101` 已 `Success`，Public `0.63546`、ref `56455800`，不得重复提交。最终榜单目前仍是 `0/2` 手工选择；截止前经用户单独确认后至少选择 ref `56455800`，第二个安全候选可选 ref `56392305`，绝不能让自动选择落到历史 ensemble。
 2. RT-DETR random fixed 已按 `0.70443` 门禁失败，禁止推送 `kernel_full_rtdetr` 或上传其测试 CSV。GPU 配额恢复后，RT-DETR 分支只允许一次 zero-extra fixed；再失败才一次 `num_denoising=200`，不要加类名别名。
-3. 先完成 AutoDL 登录态只读询价并在付费创建前确认；实例创建后先上传私有 EIoU bundle/raw 到私有数据盘并跑 `--preflight-only`，只有 `PREFLIGHT_OK` 才启动一次 EIoU fixed，精确审计 `--expected-box-iou-loss eiou`。若不租 AutoDL，则等 Kaggle 配额恢复且确认远端不存在 EIoU 版本后只推送一次。失败后排 `adamw_lr001`（核验 runtime optimizer contract），再排已预注册 `reg_max=16`（核验 runtime model contract），之后是已打包的普通 HSI16 `[13,8,5,...]`（核验四份 preparation artifacts 与哈希），再后才是 checkpoint-native YOLO11m（核验 exact source SHA 与 model contract）。
+3. AutoDL 重庆 739 机已询价和配置，但不得在缺少 `确认创建重庆739机并开机` 时点击。实例创建成功后，计划把私有 EIoU bundle/raw 放到系统盘 `/root/hsi/input`，把 work/output 放到数据盘 `/root/autodl-tmp/hsi`；先核验空间，向这些精确私有路径上传仍要单独确认。上传后先跑 `--preflight-only`，只有 `PREFLIGHT_OK` 才启动一次 EIoU fixed，精确审计 `--expected-box-iou-loss eiou`。若不租 AutoDL，则等 Kaggle 配额恢复且确认远端不存在 EIoU 版本后只推送一次。失败后排 `adamw_lr001`（核验 runtime optimizer contract），再排已预注册 `reg_max=16`（核验 runtime model contract），之后是已打包的普通 HSI16 `[13,8,5,...]`（核验四份 preparation artifacts 与哈希），再后才是 checkpoint-native YOLO11m（核验 exact source SHA 与 model contract）。
 4. YOLO11m HSI16 尚无合法 fixed 分数，但官方 checkpoint 的下载、SHA-256、runtime 架构和本地私有包均已审计完成。它只有一次 fixed 测量资格；不得引用公开泄漏的 `0.7394`，也不得把 smoke 或 `99.6848%` 迁移率写成精度收益。
 5. `dfl=2.0/2.5`、scale、`cls_pw`、phase-aware、e45、horizontal-flip、YOLO26m zero-init、object-crop、SpectralStem、tile TTA、尺度来源/权重、RT-DETR random 和继续扫框校准均已否决，不重复投入。
 6. 更直接候选都失败且额度仍足时，才运行一次已预注册 YOLO26x fixed；门禁器显式使用 `--model yolo26x.pt`。不要重跑 YOLO26l、P2 或 1280。
@@ -77,7 +78,7 @@
 
 1. **Kaggle 登录**：`kaggle` 命令行的登录约 12 小时过期，症状是 `Authentication required` 或 `Permission 'kernels.get' was denied`。
    遇到时**告诉我，我自己在终端跑 `kaggle auth login`**。**绝不要向我索要 API token/密码，也不要把任何凭证写进文件、日志、git 或提示词。**
-2. **数据与模型保密**：所有 Kaggle 数据集/Notebook 保持**私有**（`is_private: true`），不要设为公开。用户当前只授权把本次 EIoU 所需 bundle 和原始比赛包传到所选 AutoDL 实例的**私有数据盘**；上传前仍要复核具体目标，绝不能使用 AutoDL“公开数据”入口。除此以外不要把比赛数据、权重、`exports/` 目录传到第三方；`exports/` 比赛期间不得外传。
+2. **数据与模型保密**：所有 Kaggle 数据集/Notebook 保持**私有**（`is_private: true`），不要设为公开。AutoDL 实例创建不自动授权上传；用户还必须针对所选实例私有路径 `/root/hsi/input` 与 `/root/autodl-tmp/hsi` 单独确认，绝不能使用 AutoDL“公开数据”入口。除此以外不要把比赛数据、权重、`exports/` 目录传到第三方；`exports/` 比赛期间不得外传。
 3. **不要擅自停止或重启正在跑的训练**。指令有歧义时先问我（这个项目有过误杀训练 24/30 轮的教训）。
 4. **不要重训已有的模型**：所有成员的权重都已下载在 `kaggle_remote/outputs/*/…/last.pt` 和 `runs/*/weights/last.pt`，重训只会白耗额度。
 5. **D 盘空间**：目前剩约 140GB。生成新数据集前先看剩余空间；**删除任何文件前先告诉我**，特别是 `data/raw/`（6GB 原始比赛 zip）、
