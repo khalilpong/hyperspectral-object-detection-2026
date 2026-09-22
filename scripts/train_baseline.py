@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 from pathlib import Path
@@ -33,6 +34,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lr0", type=float)
     parser.add_argument("--lrf", type=float)
     parser.add_argument("--warmup-epochs", type=float)
+    parser.add_argument(
+        "--momentum",
+        type=float,
+        help="SGD momentum or Adam beta1. Omit to keep the Ultralytics default.",
+    )
+    parser.add_argument(
+        "--warmup-bias-lr",
+        type=float,
+        help="Initial bias learning rate during warmup.",
+    )
     parser.add_argument("--box", type=float)
     parser.add_argument(
         "--box-iou-loss",
@@ -115,6 +126,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--cls-pw must satisfy 0.0 <= value <= 1.0")
     if args.dfl is not None and (not math.isfinite(args.dfl) or args.dfl < 0.0):
         parser.error("--dfl must be finite and non-negative")
+    if args.lr0 is not None and (not math.isfinite(args.lr0) or args.lr0 <= 0.0):
+        parser.error("--lr0 must be finite and positive")
+    if args.momentum is not None and (
+        not math.isfinite(args.momentum) or not 0.0 <= args.momentum < 1.0
+    ):
+        parser.error("--momentum must be finite and satisfy 0.0 <= value < 1.0")
+    if args.warmup_bias_lr is not None and (
+        not math.isfinite(args.warmup_bias_lr) or args.warmup_bias_lr < 0.0
+    ):
+        parser.error("--warmup-bias-lr must be finite and non-negative")
     if args.degrees is not None and (
         not math.isfinite(args.degrees) or not 0.0 <= args.degrees <= 180.0
     ):
@@ -133,6 +154,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 "lr0",
                 "lrf",
                 "warmup_epochs",
+                "momentum",
+                "warmup_bias_lr",
                 "box",
                 "box_iou_loss",
                 "dfl",
@@ -199,6 +222,8 @@ def build_train_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "lr0",
         "lrf",
         "warmup_epochs",
+        "momentum",
+        "warmup_bias_lr",
         "box",
         "dfl",
         "cls_pw",
@@ -215,6 +240,49 @@ def build_train_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         if value is not None:
             kwargs[option] = value
     return kwargs
+
+
+def record_optimizer_contract(trainer: object) -> None:
+    """Persist the optimizer values that are effective after Ultralytics auto-selection.
+
+    ``optimizer=auto`` mutates the learning rate, beta1, and warmup-bias LR after
+    parsing the requested arguments. ``args.yaml`` therefore records request-time
+    values rather than the effective optimizer. This callback runs after optimizer
+    and scheduler construction and provides an auditable runtime contract.
+    """
+    from ultralytics.utils import LOGGER
+
+    optimizer = trainer.optimizer
+    groups = optimizer.param_groups
+
+    def unique_numbers(key: str) -> list[float]:
+        return sorted({float(group[key]) for group in groups if key in group})
+
+    beta1_values = sorted(
+        {
+            float(group["betas"][0])
+            for group in groups
+            if "betas" in group and group["betas"] is not None
+        }
+    )
+    args = trainer.args
+    contract = {
+        "optimizer_argument": str(args.optimizer),
+        "lr0_argument": float(args.lr0),
+        "momentum_argument": float(args.momentum),
+        "effective_optimizer": type(optimizer).__name__,
+        "initial_lr_values": unique_numbers("initial_lr"),
+        "current_lr_values": unique_numbers("lr"),
+        "beta1_values": beta1_values,
+        "effective_warmup_bias_lr": float(args.warmup_bias_lr),
+        "warmup_epochs_argument": float(args.warmup_epochs),
+        "lrf_argument": float(args.lrf),
+        "weight_decay_argument": float(args.weight_decay),
+        "weight_decay_values": unique_numbers("weight_decay"),
+    }
+    output = Path(trainer.save_dir) / "optimizer_contract.json"
+    output.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    LOGGER.info("HSI optimizer contract: " + json.dumps(contract, sort_keys=True))
 
 
 def zero_extra_input_channel_weights(trainer: object, base_channels: int = 3) -> None:
@@ -286,6 +354,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     record_box_iou_loss(model.model, box_iou_loss)
     install_box_iou_loss(box_iou_loss)
+    model.add_callback("on_pretrain_routine_end", record_optimizer_contract)
     if args.extra_channel_init == "zero":
         model.add_callback("on_pretrain_routine_end", zero_extra_input_channel_weights)
     from hsi_detection.spectral_stem import SpectralDetectionTrainer, has_spectral_stem

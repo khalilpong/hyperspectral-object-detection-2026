@@ -20,6 +20,8 @@ def _write_run(
     extra_channel_init: str = "random",
     num_denoising: int | None = None,
     box_iou_loss: str | None = None,
+    optimizer_recipe: str | None = None,
+    optimizer_contract: dict[str, object] | None = None,
 ) -> tuple[Path, Path]:
     status = {
         "config": {
@@ -58,6 +60,16 @@ def _write_run(
         status["config"]["RTDETR_NUM_DENOISING"] = num_denoising
     if box_iou_loss is not None:
         status["config"]["BOX_IOU_LOSS"] = box_iou_loss
+    if optimizer_recipe is not None:
+        status["config"]["OPTIMIZER_RECIPE"] = optimizer_recipe
+    if optimizer_contract is not None:
+        status["steps"]["trained"] = {
+            "batch": 8,
+            "workers": 2,
+            "device": "0",
+            "optimizer_recipe": optimizer_recipe,
+            "optimizer_contract": optimizer_contract,
+        }
     status_path = tmp_path / "status.json"
     status_path.write_text(json.dumps(status), encoding="utf-8")
 
@@ -171,6 +183,82 @@ def test_audit_fixed_split_checks_yolo_eiou_variant(tmp_path: Path) -> None:
             status_path=status,
             results_path=results,
             expected_dfl=1.5,
+            gate=0.70443,
+        )
+
+
+def test_audit_fixed_split_checks_clean_adamw_lr001_runtime_contract(
+    tmp_path: Path,
+) -> None:
+    contract = {
+        "optimizer_argument": "AdamW",
+        "lr0_argument": 0.001,
+        "momentum_argument": 0.9,
+        "effective_optimizer": "AdamW",
+        "initial_lr_values": [0.001],
+        "current_lr_values": [0.001],
+        "beta1_values": [0.9],
+        "effective_warmup_bias_lr": 0.0,
+        "warmup_epochs_argument": 3.0,
+        "lrf_argument": 0.01,
+        "weight_decay_argument": 0.0005,
+        "weight_decay_values": [0.0, 0.0005],
+    }
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        optimizer_recipe="adamw_lr001",
+        optimizer_contract=contract,
+    )
+    contract_path = tmp_path / "optimizer_contract.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_dfl=1.5,
+        expected_optimizer_recipe="adamw_lr001",
+        optimizer_contract_path=contract_path,
+        gate=0.70443,
+    )
+
+    assert report["contract"]["expected_optimizer_recipe"] == "adamw_lr001"
+    assert len(report["hashes"]["optimizer_contract_sha256"]) == 64
+
+    with pytest.raises(ValueError, match="requires optimizer_contract_path"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_dfl=1.5,
+            expected_optimizer_recipe="adamw_lr001",
+            gate=0.70443,
+        )
+
+    drifted = dict(contract)
+    drifted["momentum_argument"] = 0.937
+    contract_path.write_text(json.dumps(drifted), encoding="utf-8")
+    with pytest.raises(ValueError, match="momentum_argument"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_dfl=1.5,
+            expected_optimizer_recipe="adamw_lr001",
+            optimizer_contract_path=contract_path,
+            gate=0.70443,
+        )
+
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    status_payload = json.loads(status.read_text(encoding="utf-8"))
+    status_payload["steps"]["trained"]["batch"] = 6
+    status.write_text(json.dumps(status_payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="config mismatch"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_dfl=1.5,
+            expected_optimizer_recipe="adamw_lr001",
+            optimizer_contract_path=contract_path,
             gate=0.70443,
         )
 

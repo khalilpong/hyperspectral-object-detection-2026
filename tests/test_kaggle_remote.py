@@ -447,6 +447,43 @@ def test_make_kernel_renders_isolated_degrees_variant(tmp_path: Path, monkeypatc
     assert metadata["is_private"] is True
 
 
+def test_make_kernel_renders_clean_adamw_lr001_recipe(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--optimizer-recipe",
+            "adamw_lr001",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_lr001"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_lr001_e30"' in rendered
+    assert '"OPTIMIZER_RECIPE": "adamw_lr001"' in rendered
+    assert '"BOX_IOU_LOSS": "ciou"' in rendered
+    assert '"DFL": 1.5' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-lr001-ablation"
+    assert metadata["is_private"] is True
+
+
 def test_make_kernel_renders_isolated_custom_pseudo_rgb_band_order(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -618,6 +655,27 @@ def test_remote_runner_builds_yolo_command_with_box_iou_loss(
     assert command[command.index("--box-iou-loss") + 1] == "eiou"
 
 
+def test_remote_runner_builds_clean_adamw_lr001_command(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_runner()
+    monkeypatch.setattr(module, "ARCHITECTURE", "yolo")
+    monkeypatch.setattr(module, "OPTIMIZER_RECIPE", "adamw_lr001")
+
+    command = module.build_training_command(
+        tmp_path / "yolo26m.pt",
+        tmp_path / "dataset.yaml",
+        batch=8,
+        device="0",
+        workers=2,
+    )
+
+    assert command[command.index("--optimizer") + 1] == "AdamW"
+    assert command[command.index("--lr0") + 1] == "0.001"
+    assert command[command.index("--momentum") + 1] == "0.9"
+    assert command[command.index("--warmup-bias-lr") + 1] == "0.0"
+
+
 @pytest.mark.parametrize(
     "arguments",
     (
@@ -627,6 +685,7 @@ def test_remote_runner_builds_yolo_command_with_box_iou_loss(
         ["--scale", "0.3"],
         ["--degrees", "5"],
         ["--box-iou-loss", "eiou"],
+        ["--optimizer-recipe", "adamw_lr001"],
         ["--data", "hsi16_phase"],
         ["--object-crops"],
         ["--tile-inference"],

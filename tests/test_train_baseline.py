@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -30,6 +32,8 @@ def test_new_run_keeps_documented_defaults() -> None:
     assert "cls_pw" not in kwargs
     assert "dfl" not in kwargs
     assert "degrees" not in kwargs
+    assert "momentum" not in kwargs
+    assert "warmup_bias_lr" not in kwargs
     assert args.box_iou_loss is None
 
 
@@ -84,6 +88,10 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
             "0.1",
             "--warmup-epochs",
             "1",
+            "--momentum",
+            "0.9",
+            "--warmup-bias-lr",
+            "0",
             "--box",
             "10",
             "--dfl",
@@ -115,6 +123,8 @@ def test_new_run_passes_explicit_augmentation_and_optimizer_overrides() -> None:
     assert kwargs["lr0"] == 0.0002
     assert kwargs["lrf"] == 0.1
     assert kwargs["warmup_epochs"] == 1.0
+    assert kwargs["momentum"] == 0.9
+    assert kwargs["warmup_bias_lr"] == 0.0
     assert kwargs["box"] == 10.0
     assert kwargs["dfl"] == 2.0
     assert kwargs["cls_pw"] == 0.25
@@ -140,6 +150,65 @@ def test_resume_rejects_optimizer_or_augmentation_override() -> None:
                 "0",
             ]
         )
+
+
+def test_optimizer_runtime_parameters_validate_and_cannot_override_resume() -> None:
+    args = train_baseline.parse_args(
+        ["--lr0", "0.001", "--momentum", "0.9", "--warmup-bias-lr", "0"]
+    )
+    kwargs = train_baseline.build_train_kwargs(args)
+    assert kwargs["lr0"] == 0.001
+    assert kwargs["momentum"] == 0.9
+    assert kwargs["warmup_bias_lr"] == 0.0
+
+    for arguments in (
+        ["--lr0", "0"],
+        ["--lr0", "nan"],
+        ["--momentum", "1"],
+        ["--momentum", "-0.01"],
+        ["--warmup-bias-lr", "-0.01"],
+    ):
+        with pytest.raises(SystemExit):
+            train_baseline.parse_args(arguments)
+
+    with pytest.raises(SystemExit):
+        train_baseline.parse_args(
+            [
+                "--resume",
+                "runs/example/weights/last.pt",
+                "--momentum",
+                "0.9",
+            ]
+        )
+
+
+def test_record_optimizer_contract_captures_effective_values(tmp_path: Path) -> None:
+    parameter = torch.nn.Parameter(torch.ones(()))
+    optimizer = torch.optim.AdamW([parameter], lr=0.001, betas=(0.9, 0.999))
+    optimizer.param_groups[0]["initial_lr"] = 0.001
+    trainer = SimpleNamespace(
+        optimizer=optimizer,
+        save_dir=tmp_path,
+        args=SimpleNamespace(
+            optimizer="AdamW",
+            lr0=0.001,
+            momentum=0.9,
+            warmup_bias_lr=0.0,
+            warmup_epochs=3.0,
+            lrf=0.01,
+            weight_decay=0.0005,
+        ),
+    )
+
+    train_baseline.record_optimizer_contract(trainer)
+
+    contract = json.loads((tmp_path / "optimizer_contract.json").read_text(encoding="utf-8"))
+    assert contract["optimizer_argument"] == "AdamW"
+    assert contract["effective_optimizer"] == "AdamW"
+    assert contract["initial_lr_values"] == [0.001]
+    assert contract["current_lr_values"] == [0.001]
+    assert contract["beta1_values"] == [0.9]
+    assert contract["effective_warmup_bias_lr"] == 0.0
 
 
 def test_cls_pw_validates_range_and_cannot_override_resume() -> None:

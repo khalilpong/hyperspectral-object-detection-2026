@@ -32,6 +32,65 @@ def _expect_equal(config: dict[str, object], expected: dict[str, object]) -> Non
         raise ValueError(f"Fixed-split config mismatch: {mismatches}")
 
 
+def _expect_float(observed: object, expected: float, name: str) -> None:
+    try:
+        value = float(observed)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Optimizer contract {name} is not numeric: {observed!r}") from error
+    if not math.isclose(value, expected, rel_tol=1e-9, abs_tol=1e-12):
+        raise ValueError(
+            f"Optimizer contract mismatch for {name}: observed={value!r}, expected={expected!r}"
+        )
+
+
+def _audit_optimizer_contract(contract: dict[str, object], recipe: str) -> None:
+    expected = {
+        "auto": {
+            "optimizer_argument": "auto",
+            "lr0_argument": 0.01,
+            "momentum_argument": 0.937,
+            "effective_optimizer": "AdamW",
+            "effective_initial_lr": 0.000455,
+        },
+        "adamw_lr001": {
+            "optimizer_argument": "AdamW",
+            "lr0_argument": 0.001,
+            "momentum_argument": 0.9,
+            "effective_optimizer": "AdamW",
+            "effective_initial_lr": 0.001,
+        },
+    }[recipe]
+    for key in ("optimizer_argument", "effective_optimizer"):
+        if contract.get(key) != expected[key]:
+            raise ValueError(
+                f"Optimizer contract mismatch for {key}: "
+                f"observed={contract.get(key)!r}, expected={expected[key]!r}"
+            )
+    for key in ("lr0_argument", "momentum_argument"):
+        _expect_float(contract.get(key), expected[key], key)
+    for key, value in {
+        "effective_warmup_bias_lr": 0.0,
+        "warmup_epochs_argument": 3.0,
+        "lrf_argument": 0.01,
+        "weight_decay_argument": 0.0005,
+    }.items():
+        _expect_float(contract.get(key), value, key)
+    for key, expected_values in {
+        "initial_lr_values": [expected["effective_initial_lr"]],
+        "current_lr_values": [expected["effective_initial_lr"]],
+        "beta1_values": [0.9],
+        "weight_decay_values": [0.0, 0.0005],
+    }.items():
+        observed = contract.get(key)
+        if not isinstance(observed, list) or len(observed) != len(expected_values):
+            raise ValueError(
+                f"Optimizer contract mismatch for {key}: observed={observed!r}, "
+                f"expected={expected_values!r}"
+            )
+        for index, expected_value in enumerate(expected_values):
+            _expect_float(observed[index], expected_value, f"{key}[{index}]")
+
+
 def audit_fixed_split(
     *,
     status_path: Path,
@@ -41,6 +100,8 @@ def audit_fixed_split(
     expected_dfl: float | None = None,
     expected_degrees: float = 0.0,
     expected_box_iou_loss: str = "ciou",
+    expected_optimizer_recipe: str = "auto",
+    optimizer_contract_path: Path | None = None,
     expected_extra_channel_init: str = "random",
     expected_rtdetr_num_denoising: int = 100,
     gate: float,
@@ -65,8 +126,12 @@ def audit_fixed_split(
         raise ValueError("YOLO does not use the RT-DETR denoising-query contract")
     if expected_box_iou_loss not in {"ciou", "eiou"}:
         raise ValueError("expected_box_iou_loss must be either 'ciou' or 'eiou'")
+    if expected_optimizer_recipe not in {"auto", "adamw_lr001"}:
+        raise ValueError("Unsupported expected_optimizer_recipe")
     if expected_architecture == "rtdetr" and expected_box_iou_loss != "ciou":
         raise ValueError("RT-DETR does not use the YOLO box-IoU-loss contract")
+    if expected_architecture == "rtdetr" and expected_optimizer_recipe != "auto":
+        raise ValueError("RT-DETR does not use the YOLO optimizer-recipe contract")
     if expected_extra_channel_init not in {"random", "zero"}:
         raise ValueError(
             "expected_extra_channel_init must be either 'random' or 'zero'"
@@ -84,6 +149,7 @@ def audit_fixed_split(
     config.setdefault("DEGREES", 0.0)
     config.setdefault("RTDETR_NUM_DENOISING", 100)
     config.setdefault("BOX_IOU_LOSS", "ciou")
+    config.setdefault("OPTIMIZER_RECIPE", "auto")
     observed_architecture = config.get("ARCHITECTURE", "yolo")
     if observed_architecture != expected_architecture:
         raise ValueError(
@@ -109,6 +175,7 @@ def audit_fixed_split(
             "DEGREES": expected_degrees,
             "DFL": 1.5 if expected_architecture == "rtdetr" else expected_dfl,
             "BOX_IOU_LOSS": expected_box_iou_loss,
+            "OPTIMIZER_RECIPE": expected_optimizer_recipe,
             "RTDETR_NUM_DENOISING": expected_rtdetr_num_denoising,
             "PHASE_TARGET_LONG_EDGE": 1024,
             "OBJECT_CROPS": False,
@@ -136,6 +203,34 @@ def audit_fixed_split(
         raise ValueError(
             "Expected exactly one successful non-OOM/non-SHM training attempt, "
             f"found {len(successful_attempts)}"
+        )
+
+    optimizer_contract = None
+    if expected_architecture == "yolo" and expected_optimizer_recipe != "auto":
+        if optimizer_contract_path is None:
+            raise ValueError(
+                "Non-default YOLO optimizer recipe requires optimizer_contract_path"
+            )
+    if optimizer_contract_path is not None:
+        optimizer_contract = json.loads(optimizer_contract_path.read_text(encoding="utf-8"))
+        if not isinstance(optimizer_contract, dict):
+            raise ValueError("optimizer_contract.json must contain an object")
+        _audit_optimizer_contract(optimizer_contract, expected_optimizer_recipe)
+        trained = steps.get("trained")
+        if isinstance(trained, dict) and trained.get("optimizer_contract") != optimizer_contract:
+            raise ValueError("status trained optimizer contract does not match optimizer_contract.json")
+    if expected_architecture == "yolo" and expected_optimizer_recipe == "adamw_lr001":
+        trained = steps.get("trained")
+        if not isinstance(trained, dict):
+            raise ValueError("status.json is missing the trained optimizer-recipe contract")
+        _expect_equal(
+            trained,
+            {
+                "batch": 8,
+                "workers": 2,
+                "device": "0",
+                "optimizer_recipe": "adamw_lr001",
+            },
         )
 
     with results_path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -171,6 +266,7 @@ def audit_fixed_split(
     if expected_architecture == "yolo":
         contract["expected_degrees"] = expected_degrees
         contract["expected_box_iou_loss"] = expected_box_iou_loss
+        contract["expected_optimizer_recipe"] = expected_optimizer_recipe
     else:
         contract["expected_rtdetr_num_denoising"] = expected_rtdetr_num_denoising
     return {
@@ -188,6 +284,11 @@ def audit_fixed_split(
         "hashes": {
             "status_sha256": _sha256(status_path),
             "results_sha256": _sha256(results_path),
+            **(
+                {"optimizer_contract_sha256": _sha256(optimizer_contract_path)}
+                if optimizer_contract_path is not None
+                else {}
+            ),
         },
     }
 
@@ -207,6 +308,12 @@ def main() -> None:
         choices=("ciou", "eiou"),
         default="ciou",
     )
+    parser.add_argument(
+        "--expected-optimizer-recipe",
+        choices=("auto", "adamw_lr001"),
+        default="auto",
+    )
+    parser.add_argument("--optimizer-contract", type=Path)
     parser.add_argument(
         "--expected-extra-channel-init",
         choices=("random", "zero"),
@@ -229,6 +336,8 @@ def main() -> None:
         expected_dfl=args.expected_dfl,
         expected_degrees=args.expected_degrees,
         expected_box_iou_loss=args.expected_box_iou_loss,
+        expected_optimizer_recipe=args.expected_optimizer_recipe,
+        optimizer_contract_path=args.optimizer_contract,
         expected_extra_channel_init=args.expected_extra_channel_init,
         expected_rtdetr_num_denoising=args.expected_rtdetr_num_denoising,
         gate=args.gate,

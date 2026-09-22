@@ -24,6 +24,8 @@
         --dfl 2.0
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --box-iou-loss eiou
+    python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
+        --optimizer-recipe adamw_lr001
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -140,6 +142,15 @@ def main() -> None:
                         help="Distribution Focal Loss gain；1.5 为 Ultralytics 基线")
     parser.add_argument("--box-iou-loss", choices=("ciou", "eiou"), default="ciou",
                         help="YOLO 边框重叠损失；ciou 为 Ultralytics 基线")
+    parser.add_argument(
+        "--optimizer-recipe",
+        choices=("auto", "adamw_lr001"),
+        default="auto",
+        help=(
+            "YOLO 优化器合同；adamw_lr001 保持基线实际 AdamW/beta1=0.9/"
+            "warmup-bias=0，只把实际初始 LR 从 0.000455 改为 0.001"
+        ),
+    )
     parser.add_argument("--rtdetr-num-denoising", type=int, default=100,
                         help="RT-DETR 训练 denoising query 数；100 为 Ultralytics 基线")
     parser.add_argument("--fusion-iou", type=float, default=0.70,
@@ -205,6 +216,8 @@ def main() -> None:
             parser.error("RT-DETR 不使用 YOLO DFL gain；--dfl 必须保持默认 1.5")
         if args.box_iou_loss != "ciou":
             parser.error("RT-DETR 不使用 YOLO --box-iou-loss；必须保持 ciou")
+        if args.optimizer_recipe != "auto":
+            parser.error("RT-DETR 不使用 YOLO --optimizer-recipe；必须保持 auto")
         if args.object_crops or args.tile_inference:
             parser.error("RT-DETR smoke/fixed 路径暂不支持 object crops 或 tile inference")
     elif args.rtdetr_num_denoising != 100:
@@ -235,6 +248,7 @@ def main() -> None:
     degrees_tag = "" if args.degrees == 0.0 else f"_deg{_compact_decimal_tag(args.degrees)}"
     dfl_tag = "" if args.dfl == 1.5 else f"_dfl{_fraction_tag(args.dfl)}"
     box_iou_tag = "" if args.box_iou_loss == "ciou" else f"_{args.box_iou_loss}"
+    optimizer_tag = "" if args.optimizer_recipe == "auto" else "_lr001"
     denoising_tag = (
         ""
         if args.rtdetr_num_denoising == 100
@@ -251,6 +265,7 @@ def main() -> None:
         + degrees_tag
         + dfl_tag
         + box_iou_tag
+        + optimizer_tag
         + denoising_tag
         + crop_tag
         + tile_tag
@@ -285,6 +300,7 @@ def main() -> None:
         f'    "DEGREES": {args.degrees!r},\n'
         f'    "DFL": {args.dfl!r},\n'
         f'    "BOX_IOU_LOSS": "{args.box_iou_loss}",\n'
+        f'    "OPTIMIZER_RECIPE": "{args.optimizer_recipe}",\n'
         f'    "RTDETR_NUM_DENOISING": {args.rtdetr_num_denoising},\n'
         f'    "FUSION_IOU": {args.fusion_iou!r},\n'
         f'    "SUPPORT_GAIN": {args.support_gain!r},\n'
@@ -336,6 +352,7 @@ def main() -> None:
           f"degrees={args.degrees:g} "
           f"dfl={args.dfl:g} "
           f"box_iou_loss={args.box_iou_loss} "
+          f"optimizer_recipe={args.optimizer_recipe} "
           f"rtdetr_num_denoising={args.rtdetr_num_denoising} "
           f"fusion_iou={args.fusion_iou:g} support_gain={args.support_gain:g} "
           f"percentiles={args.lower_percentile:g}/{args.upper_percentile:g} "

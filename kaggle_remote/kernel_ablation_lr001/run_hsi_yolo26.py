@@ -73,11 +73,11 @@ from pathlib import Path
 # ============================== 默认配置 ==============================
 # 由 make_kernel.py 生成 Kaggle Notebook 时替换这一块；云服务器上用环境变量覆盖。
 CONFIG = {
-    "MODE": "smoke",
+    "MODE": "ablation",
     "ARCHITECTURE": "yolo",
     "MODEL": "yolo26m.pt",
-    "EPOCHS": 1,
-    "RUN_NAME": "kaggle_smoke_m1024",
+    "EPOCHS": 30,
+    "RUN_NAME": "kaggle_ablation_yolo26m_lr001_e30",
     "ATTEMPTS": "8:2,6:2,4:2,4:0",
     "MULTISCALE": 0,
     "DATA": "hsi16",
@@ -91,9 +91,9 @@ CONFIG = {
     "DEGREES": 0.0,
     "DFL": 1.5,
     "BOX_IOU_LOSS": "ciou",
-    "OPTIMIZER_RECIPE": "auto",
+    "OPTIMIZER_RECIPE": "adamw_lr001",
     "RTDETR_NUM_DENOISING": 100,
-    "FUSION_IOU": 0.70,
+    "FUSION_IOU": 0.7,
     "SUPPORT_GAIN": 0.0,
     "PHASE_TARGET_LONG_EDGE": 1024,
     "OBJECT_CROPS": 0,
