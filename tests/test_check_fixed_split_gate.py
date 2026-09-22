@@ -22,6 +22,9 @@ def _write_run(
     box_iou_loss: str | None = None,
     optimizer_recipe: str | None = None,
     optimizer_contract: dict[str, object] | None = None,
+    model_yaml: str | None = None,
+    reg_max: int | None = None,
+    model_contract: dict[str, object] | None = None,
 ) -> tuple[Path, Path]:
     status = {
         "config": {
@@ -62,14 +65,24 @@ def _write_run(
         status["config"]["BOX_IOU_LOSS"] = box_iou_loss
     if optimizer_recipe is not None:
         status["config"]["OPTIMIZER_RECIPE"] = optimizer_recipe
+    if model_yaml is not None:
+        status["config"]["MODEL_YAML"] = model_yaml
+    if reg_max is not None:
+        status["config"]["REG_MAX"] = reg_max
     if optimizer_contract is not None:
-        status["steps"]["trained"] = {
+        status["steps"].setdefault("trained", {}).update({
             "batch": 8,
             "workers": 2,
             "device": "0",
             "optimizer_recipe": optimizer_recipe,
             "optimizer_contract": optimizer_contract,
-        }
+        })
+    if model_contract is not None:
+        status["steps"].setdefault("trained", {}).update({
+            "model_yaml": model_yaml,
+            "reg_max": reg_max,
+            "model_contract": model_contract,
+        })
     status_path = tmp_path / "status.json"
     status_path.write_text(json.dumps(status), encoding="utf-8")
 
@@ -263,6 +276,77 @@ def test_audit_fixed_split_checks_clean_adamw_lr001_runtime_contract(
         )
 
 
+def test_audit_fixed_split_checks_yolo_regmax16_model_contract(
+    tmp_path: Path,
+) -> None:
+    contract = {
+        "model_class": "DetectionModel",
+        "head_class": "Detect",
+        "yaml_file": "yolo26m-regmax16.yaml",
+        "yaml_reg_max": 16,
+        "reg_max": 16,
+        "dfl_module": "DFL",
+        "dfl_is_identity": False,
+        "end2end": True,
+        "nc": 18,
+        "names_count": 18,
+        "first_input_channels": 16,
+        "box_output_channels": [64, 64, 64],
+        "one2one_box_output_channels": [64, 64, 64],
+        "parameter_count": 21_831_548,
+        "trainable_parameter_count": 21_831_548,
+    }
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        model_yaml="yolo26m-regmax16.yaml",
+        reg_max=16,
+        model_contract=contract,
+    )
+    contract_path = tmp_path / "model_contract.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    report = audit_fixed_split(
+        status_path=status,
+        results_path=results,
+        expected_model_yaml="yolo26m-regmax16.yaml",
+        expected_reg_max=16,
+        expected_dfl=1.5,
+        model_contract_path=contract_path,
+        gate=0.70443,
+    )
+
+    assert report["contract"]["expected_reg_max"] == 16
+    assert report["contract"]["expected_model_yaml"] == "yolo26m-regmax16.yaml"
+    assert len(report["hashes"]["model_contract_sha256"]) == 64
+    assert report["passes_full_data_gate"] is True
+
+    with pytest.raises(ValueError, match="requires model_contract_path"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_model_yaml="yolo26m-regmax16.yaml",
+            expected_reg_max=16,
+            expected_dfl=1.5,
+            gate=0.70443,
+        )
+
+    drifted = dict(contract)
+    drifted["dfl_module"] = "Identity"
+    contract_path.write_text(json.dumps(drifted), encoding="utf-8")
+    with pytest.raises(ValueError, match="true DFL"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_model_yaml="yolo26m-regmax16.yaml",
+            expected_reg_max=16,
+            expected_dfl=1.5,
+            model_contract_path=contract_path,
+            gate=0.70443,
+        )
+
+
 def test_audit_fixed_split_accepts_rtdetr_contract(tmp_path: Path) -> None:
     status, results = _write_run(
         tmp_path,
@@ -369,5 +453,28 @@ def test_audit_fixed_split_rejects_yolo_dfl_contract_for_rtdetr(
             results_path=results,
             expected_architecture="rtdetr",
             expected_dfl=1.5,
+            gate=0.70443,
+        )
+
+
+def test_audit_fixed_split_rejects_yolo_regmax_contract_for_rtdetr(
+    tmp_path: Path,
+) -> None:
+    status, results = _write_run(
+        tmp_path,
+        dfl=1.5,
+        best=0.705,
+        architecture="rtdetr",
+        model="rtdetr-l.pt",
+    )
+
+    with pytest.raises(ValueError, match="does not use"):
+        audit_fixed_split(
+            status_path=status,
+            results_path=results,
+            expected_architecture="rtdetr",
+            expected_model="rtdetr-l.pt",
+            expected_model_yaml="yolo26m-regmax16.yaml",
+            expected_reg_max=16,
             gate=0.70443,
         )

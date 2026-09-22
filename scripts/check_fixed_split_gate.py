@@ -91,17 +91,54 @@ def _audit_optimizer_contract(contract: dict[str, object], recipe: str) -> None:
             _expect_float(observed[index], expected_value, f"{key}[{index}]")
 
 
+def _audit_model_contract(
+    contract: dict[str, object],
+    *,
+    expected_reg_max: int,
+    require_yaml_reg_max: bool,
+) -> None:
+    expected_box_channels = [4 * expected_reg_max] * 3
+    expected = {
+        "reg_max": expected_reg_max,
+        "dfl_is_identity": expected_reg_max == 1,
+        "nc": 18,
+        "names_count": 18,
+        "first_input_channels": 16,
+        "box_output_channels": expected_box_channels,
+    }
+    _expect_equal(contract, expected)
+    one2one_channels = contract.get("one2one_box_output_channels")
+    if one2one_channels is not None and one2one_channels != expected_box_channels:
+        raise ValueError(
+            "YOLO model contract mismatch for one2one_box_output_channels: "
+            f"observed={one2one_channels!r}, expected={expected_box_channels!r}"
+        )
+    if require_yaml_reg_max and contract.get("yaml_reg_max") != expected_reg_max:
+        raise ValueError(
+            "YOLO model contract mismatch for yaml_reg_max: "
+            f"observed={contract.get('yaml_reg_max')!r}, expected={expected_reg_max!r}"
+        )
+    if expected_reg_max > 1 and contract.get("dfl_module") != "DFL":
+        raise ValueError(
+            "YOLO model contract did not instantiate true DFL: "
+            f"{contract.get('dfl_module')!r}"
+        )
+
+
 def audit_fixed_split(
     *,
     status_path: Path,
     results_path: Path,
     expected_architecture: str = "yolo",
     expected_model: str | None = None,
+    expected_model_yaml: str | None = None,
+    expected_reg_max: int = 1,
     expected_dfl: float | None = None,
     expected_degrees: float = 0.0,
     expected_box_iou_loss: str = "ciou",
     expected_optimizer_recipe: str = "auto",
     optimizer_contract_path: Path | None = None,
+    model_contract_path: Path | None = None,
     expected_extra_channel_init: str = "random",
     expected_rtdetr_num_denoising: int = 100,
     gate: float,
@@ -116,6 +153,12 @@ def audit_fixed_split(
         raise ValueError("YOLO fixed-split audit requires expected_dfl")
     if expected_architecture == "rtdetr" and expected_dfl is not None:
         raise ValueError("RT-DETR does not use the YOLO expected_dfl contract")
+    if expected_reg_max <= 0:
+        raise ValueError("expected_reg_max must be positive")
+    if expected_architecture == "rtdetr" and (
+        expected_reg_max != 1 or expected_model_yaml
+    ):
+        raise ValueError("RT-DETR does not use the YOLO reg_max/model-YAML contract")
     if not math.isfinite(expected_degrees) or not 0.0 <= expected_degrees <= 180.0:
         raise ValueError("expected_degrees must be finite and within [0, 180]")
     if expected_rtdetr_num_denoising <= 0:
@@ -150,6 +193,8 @@ def audit_fixed_split(
     config.setdefault("RTDETR_NUM_DENOISING", 100)
     config.setdefault("BOX_IOU_LOSS", "ciou")
     config.setdefault("OPTIMIZER_RECIPE", "auto")
+    config.setdefault("MODEL_YAML", "")
+    config.setdefault("REG_MAX", 1)
     observed_architecture = config.get("ARCHITECTURE", "yolo")
     if observed_architecture != expected_architecture:
         raise ValueError(
@@ -162,6 +207,8 @@ def audit_fixed_split(
         {
             "MODE": "ablation",
             "MODEL": expected_model,
+            "MODEL_YAML": expected_model_yaml or "",
+            "REG_MAX": expected_reg_max,
             "EPOCHS": 30,
             "MULTISCALE": False,
             "DATA": "hsi16",
@@ -206,6 +253,7 @@ def audit_fixed_split(
         )
 
     optimizer_contract = None
+    model_contract = None
     if expected_architecture == "yolo" and expected_optimizer_recipe != "auto":
         if optimizer_contract_path is None:
             raise ValueError(
@@ -219,6 +267,21 @@ def audit_fixed_split(
         trained = steps.get("trained")
         if isinstance(trained, dict) and trained.get("optimizer_contract") != optimizer_contract:
             raise ValueError("status trained optimizer contract does not match optimizer_contract.json")
+    if expected_architecture == "yolo" and expected_reg_max != 1:
+        if model_contract_path is None:
+            raise ValueError("Non-default YOLO reg_max requires model_contract_path")
+    if model_contract_path is not None:
+        model_contract = json.loads(model_contract_path.read_text(encoding="utf-8"))
+        if not isinstance(model_contract, dict):
+            raise ValueError("model_contract.json must contain an object")
+        _audit_model_contract(
+            model_contract,
+            expected_reg_max=expected_reg_max,
+            require_yaml_reg_max=bool(expected_model_yaml),
+        )
+        trained = steps.get("trained")
+        if isinstance(trained, dict) and trained.get("model_contract") != model_contract:
+            raise ValueError("status trained model contract does not match model_contract.json")
     if expected_architecture == "yolo" and expected_optimizer_recipe == "adamw_lr001":
         trained = steps.get("trained")
         if not isinstance(trained, dict):
@@ -257,6 +320,8 @@ def audit_fixed_split(
         "single_model": True,
         "architecture": expected_architecture,
         "model": expected_model,
+        "expected_model_yaml": expected_model_yaml or "",
+        "expected_reg_max": expected_reg_max,
         "fixed_split": "fixed_2400_train_600_val",
         "expected_extra_channel_init": expected_extra_channel_init,
         "gate": gate,
@@ -289,6 +354,11 @@ def audit_fixed_split(
                 if optimizer_contract_path is not None
                 else {}
             ),
+            **(
+                {"model_contract_sha256": _sha256(model_contract_path)}
+                if model_contract_path is not None
+                else {}
+            ),
         },
     }
 
@@ -301,6 +371,8 @@ def main() -> None:
         "--architecture", choices=("yolo", "rtdetr"), default="yolo"
     )
     parser.add_argument("--model")
+    parser.add_argument("--expected-model-yaml")
+    parser.add_argument("--expected-reg-max", type=int, default=1)
     parser.add_argument("--expected-dfl", type=float)
     parser.add_argument("--expected-degrees", type=float, default=0.0)
     parser.add_argument(
@@ -314,6 +386,7 @@ def main() -> None:
         default="auto",
     )
     parser.add_argument("--optimizer-contract", type=Path)
+    parser.add_argument("--model-contract", type=Path)
     parser.add_argument(
         "--expected-extra-channel-init",
         choices=("random", "zero"),
@@ -333,11 +406,14 @@ def main() -> None:
         results_path=args.results,
         expected_architecture=args.architecture,
         expected_model=args.model,
+        expected_model_yaml=args.expected_model_yaml,
+        expected_reg_max=args.expected_reg_max,
         expected_dfl=args.expected_dfl,
         expected_degrees=args.expected_degrees,
         expected_box_iou_loss=args.expected_box_iou_loss,
         expected_optimizer_recipe=args.expected_optimizer_recipe,
         optimizer_contract_path=args.optimizer_contract,
+        model_contract_path=args.model_contract,
         expected_extra_channel_init=args.expected_extra_channel_init,
         expected_rtdetr_num_denoising=args.expected_rtdetr_num_denoising,
         gate=args.gate,

@@ -413,6 +413,81 @@ def test_make_kernel_renders_isolated_eiou_variant(tmp_path: Path, monkeypatch) 
     assert metadata["is_private"] is True
 
 
+def test_make_kernel_renders_isolated_regmax16_variant(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            "--mode",
+            "ablation",
+            "--model",
+            "yolo26m.pt",
+            "--epochs",
+            "30",
+            "--reg-max",
+            "16",
+        ],
+    )
+
+    module.main()
+
+    folder = tmp_path / "kernel_ablation_rm16"
+    rendered = (folder / "run_hsi_yolo26.py").read_text(encoding="utf-8")
+    metadata = json.loads((folder / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert '"RUN_NAME": "kaggle_ablation_yolo26m_rm16_e30"' in rendered
+    assert '"MODEL": "yolo26m.pt"' in rendered
+    assert '"MODEL_YAML": "yolo26m-regmax16.yaml"' in rendered
+    assert '"REG_MAX": 16' in rendered
+    assert '"DFL": 1.5' in rendered
+    assert '"BOX_IOU_LOSS": "ciou"' in rendered
+    assert metadata["id"] == "zephyrpong/hsi-yolo26m-rm16-ablation"
+    assert metadata["is_private"] is True
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ["--mode", "full", "--epochs", "30"],
+        ["--mode", "ablation", "--epochs", "1"],
+        ["--mode", "ablation", "--epochs", "30", "--seed", "7"],
+        ["--mode", "ablation", "--epochs", "30", "--multiscale"],
+        ["--mode", "ablation", "--epochs", "30", "--dfl", "2.0"],
+        ["--mode", "ablation", "--epochs", "30", "--box-iou-loss", "eiou"],
+    ),
+)
+def test_make_kernel_rejects_regmax16_contract_drift(
+    tmp_path: Path, monkeypatch, arguments: list[str]
+) -> None:
+    module = _load_make_kernel()
+    module.HERE = tmp_path
+    (tmp_path / "run_hsi_yolo26.py").write_text(
+        RUNNER.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "make_kernel.py",
+            *arguments,
+            "--model",
+            "yolo26m.pt",
+            "--reg-max",
+            "16",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        module.main()
+
+
 def test_make_kernel_renders_isolated_degrees_variant(tmp_path: Path, monkeypatch) -> None:
     module = _load_make_kernel()
     module.HERE = tmp_path
@@ -655,6 +730,82 @@ def test_remote_runner_builds_yolo_command_with_box_iou_loss(
     assert command[command.index("--box-iou-loss") + 1] == "eiou"
 
 
+def test_remote_runner_builds_yaml_model_with_pretrained_weight_transfer(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_runner()
+    monkeypatch.setattr(module, "ARCHITECTURE", "yolo")
+
+    command = module.build_training_command(
+        tmp_path / "yolo26m-regmax16.yaml",
+        tmp_path / "dataset.yaml",
+        batch=8,
+        device="0",
+        workers=2,
+        load_weights=tmp_path / "yolo26m.pt",
+    )
+
+    assert command[command.index("--model") + 1].endswith("yolo26m-regmax16.yaml")
+    assert command[command.index("--load-weights") + 1].endswith("yolo26m.pt")
+
+
+def test_remote_runner_resolves_audited_yaml_and_packaged_weights(
+    tmp_path: Path,
+) -> None:
+    module = _load_runner()
+    weights = tmp_path / "yolo26m.pt"
+    weights.write_bytes(b"pretrained")
+    model_yaml = tmp_path / "yolo26m-regmax16.yaml"
+    model_yaml.write_text("nc: 80\nreg_max: 16\n", encoding="utf-8")
+
+    model_source, load_weights, audit = module.resolve_training_model_sources(
+        tmp_path,
+        model="yolo26m.pt",
+        model_yaml="yolo26m-regmax16.yaml",
+        expected_reg_max=16,
+    )
+
+    assert model_source == model_yaml
+    assert load_weights == weights
+    assert audit is not None
+    assert audit["reg_max"] == 16
+    assert len(audit["model_yaml_sha256"]) == 64
+    assert len(audit["pretrained_weights_sha256"]) == 64
+
+
+def test_remote_runner_rejects_yaml_variant_without_packaged_weights(
+    tmp_path: Path,
+) -> None:
+    module = _load_runner()
+    (tmp_path / "yolo26m-regmax16.yaml").write_text(
+        "nc: 80\nreg_max: 16\n", encoding="utf-8"
+    )
+
+    with pytest.raises(FileNotFoundError, match="预训练权重"):
+        module.resolve_training_model_sources(
+            tmp_path,
+            model="yolo26m.pt",
+            model_yaml="yolo26m-regmax16.yaml",
+            expected_reg_max=16,
+        )
+
+
+def test_remote_runner_rejects_yaml_regmax_drift(tmp_path: Path) -> None:
+    module = _load_runner()
+    (tmp_path / "yolo26m.pt").write_bytes(b"pretrained")
+    (tmp_path / "yolo26m-regmax16.yaml").write_text(
+        "nc: 80\nreg_max: 8\n", encoding="utf-8"
+    )
+
+    with pytest.raises(RuntimeError, match="reg_max"):
+        module.resolve_training_model_sources(
+            tmp_path,
+            model="yolo26m.pt",
+            model_yaml="yolo26m-regmax16.yaml",
+            expected_reg_max=16,
+        )
+
+
 def test_remote_runner_builds_clean_adamw_lr001_command(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -686,6 +837,7 @@ def test_remote_runner_builds_clean_adamw_lr001_command(
         ["--degrees", "5"],
         ["--box-iou-loss", "eiou"],
         ["--optimizer-recipe", "adamw_lr001"],
+        ["--reg-max", "16"],
         ["--data", "hsi16_phase"],
         ["--object-crops"],
         ["--tile-inference"],

@@ -26,6 +26,8 @@
         --box-iou-loss eiou
     python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
         --optimizer-recipe adamw_lr001
+    python make_kernel.py --mode ablation --model yolo26m.pt --epochs 30 \
+        --reg-max 16
 
 生成后推送：
     cd kernel_<mode> && kaggle kernels push -p .
@@ -110,6 +112,13 @@ def main() -> None:
         "--model",
         help="预训练权重；默认随架构选择 yolo26m.pt 或 rtdetr-l.pt",
     )
+    parser.add_argument(
+        "--reg-max",
+        type=int,
+        choices=(1, 16),
+        default=1,
+        help="YOLO box distribution bins；1 为 YOLO26 基线，16 为 true DFL 候选",
+    )
     parser.add_argument("--epochs", type=int, required=True)
     parser.add_argument(
         "--attempts",
@@ -169,6 +178,11 @@ def main() -> None:
     args = parser.parse_args()
     if args.model is None:
         args.model = "rtdetr-l.pt" if args.architecture == "rtdetr" else "yolo26m.pt"
+    model_yaml = ""
+    if args.reg_max == 16:
+        if args.architecture != "yolo" or args.model != "yolo26m.pt":
+            parser.error("当前 --reg-max 16 只预注册了 YOLO26m + yolo26m.pt")
+        model_yaml = "yolo26m-regmax16.yaml"
     if args.attempts is None:
         args.attempts = (
             "2:2,1:2,1:0"
@@ -202,6 +216,8 @@ def main() -> None:
     if not args.multiscale and (args.fusion_iou != 0.70 or args.support_gain != 0.0):
         parser.error("--fusion-iou/--support-gain 的非默认值要求同时启用 --multiscale")
     if args.architecture == "rtdetr":
+        if args.reg_max != 1:
+            parser.error("RT-DETR 不使用 YOLO --reg-max；必须保持 1")
         if args.data != "hsi16":
             parser.error("RT-DETR 远程路径目前只支持 --data hsi16")
         if args.spectral_stem:
@@ -222,6 +238,31 @@ def main() -> None:
             parser.error("RT-DETR smoke/fixed 路径暂不支持 object crops 或 tile inference")
     elif args.rtdetr_num_denoising != 100:
         parser.error("YOLO 路径不使用 --rtdetr-num-denoising；必须保持默认 100")
+    if args.reg_max != 1:
+        regmax_contract = {
+            "mode": args.mode == "ablation",
+            "epochs": args.epochs == 30,
+            "seed": args.seed == 2026,
+            "multiscale": not args.multiscale,
+            "data": args.data == "hsi16",
+            "extra_channel_init": args.extra_channel_init == "random",
+            "spectral_stem": not args.spectral_stem,
+            "percentiles": (args.lower_percentile, args.upper_percentile) == (0.5, 99.5),
+            "cls_pw": args.cls_pw == 0.0,
+            "scale": args.scale == 0.5,
+            "degrees": args.degrees == 0.0,
+            "dfl": args.dfl == 1.5,
+            "box_iou_loss": args.box_iou_loss == "ciou",
+            "optimizer_recipe": args.optimizer_recipe == "auto",
+            "object_crops": not args.object_crops,
+            "tile_inference": not args.tile_inference,
+        }
+        drift = [name for name, matches in regmax_contract.items() if not matches]
+        if drift:
+            parser.error(
+                "--reg-max 16 是隔离的单变量架构实验；以下合同发生漂移："
+                + ", ".join(drift)
+            )
 
     model_tag = args.model.removesuffix(".pt")
     architecture_tag = "_rtdetr" if args.architecture == "rtdetr" else ""
@@ -249,6 +290,7 @@ def main() -> None:
     dfl_tag = "" if args.dfl == 1.5 else f"_dfl{_fraction_tag(args.dfl)}"
     box_iou_tag = "" if args.box_iou_loss == "ciou" else f"_{args.box_iou_loss}"
     optimizer_tag = "" if args.optimizer_recipe == "auto" else "_lr001"
+    reg_max_tag = "" if args.reg_max == 1 else f"_rm{args.reg_max}"
     denoising_tag = (
         ""
         if args.rtdetr_num_denoising == 100
@@ -266,6 +308,7 @@ def main() -> None:
         + dfl_tag
         + box_iou_tag
         + optimizer_tag
+        + reg_max_tag
         + denoising_tag
         + crop_tag
         + tile_tag
@@ -285,6 +328,8 @@ def main() -> None:
         f'    "MODE": "{args.mode}",\n'
         f'    "ARCHITECTURE": "{args.architecture}",\n'
         f'    "MODEL": "{args.model}",\n'
+        f'    "MODEL_YAML": "{model_yaml}",\n'
+        f'    "REG_MAX": {args.reg_max},\n'
         f'    "EPOCHS": {args.epochs},\n'
         f'    "RUN_NAME": "{run_name}",\n'
         f'    "ATTEMPTS": "{args.attempts}",\n'
@@ -344,6 +389,7 @@ def main() -> None:
     print(f"  运行名   : {run_name}")
     print(f"  配置     : mode={args.mode} architecture={args.architecture} "
           f"model={args.model} epochs={args.epochs} "
+          f"model_yaml={model_yaml or '-'} reg_max={args.reg_max} "
           f"attempts={args.attempts} multiscale={args.multiscale} data={args.data} "
           f"seed={args.seed} extra_channel_init={args.extra_channel_init} "
           f"spectral_stem={args.spectral_stem} "

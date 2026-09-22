@@ -285,6 +285,83 @@ def record_optimizer_contract(trainer: object) -> None:
     LOGGER.info("HSI optimizer contract: " + json.dumps(contract, sort_keys=True))
 
 
+def record_yolo_model_contract(trainer: object) -> None:
+    """Persist the effective YOLO detection-head architecture before training.
+
+    A YAML-defined architecture can transfer most parameters from a pretrained
+    checkpoint while changing a small head detail such as ``reg_max``.  The
+    requested YAML filename alone is not sufficient evidence that the trainer
+    actually built the intended 16-channel, task-specific model, so record the
+    live model after Ultralytics has applied the dataset channel/class overrides.
+    """
+    import torch
+
+    from ultralytics.utils import LOGGER
+    from ultralytics.utils.torch_utils import unwrap_model
+
+    model = unwrap_model(trainer.model)
+    try:
+        head = model.model[-1]
+    except (AttributeError, IndexError, TypeError) as error:
+        raise RuntimeError("Could not locate the YOLO detection head") from error
+    if not hasattr(head, "reg_max") or not hasattr(head, "nc"):
+        raise RuntimeError(
+            f"Expected a YOLO detection head, got {type(head).__name__}"
+        )
+
+    first_conv = next(
+        (module for module in model.modules() if isinstance(module, torch.nn.Conv2d)),
+        None,
+    )
+    if first_conv is None:
+        raise RuntimeError("Could not locate the first convolution in the YOLO model")
+
+    def output_channels(branch_name: str) -> list[int] | None:
+        branch = getattr(head, branch_name, None)
+        if branch is None:
+            return None
+        values: list[int] = []
+        for block in branch:
+            try:
+                layer = block[-1]
+                values.append(int(layer.out_channels))
+            except (AttributeError, IndexError, TypeError) as error:
+                raise RuntimeError(
+                    f"Could not inspect {branch_name} output channels"
+                ) from error
+        return values
+
+    yaml_metadata = getattr(model, "yaml", {})
+    yaml_reg_max = (
+        int(yaml_metadata["reg_max"])
+        if isinstance(yaml_metadata, dict) and "reg_max" in yaml_metadata
+        else None
+    )
+    contract = {
+        "model_class": type(model).__name__,
+        "head_class": type(head).__name__,
+        "yaml_file": str(getattr(model, "yaml_file", "")),
+        "yaml_reg_max": yaml_reg_max,
+        "reg_max": int(head.reg_max),
+        "dfl_module": type(head.dfl).__name__,
+        "dfl_is_identity": isinstance(head.dfl, torch.nn.Identity),
+        "end2end": bool(getattr(head, "end2end", False)),
+        "nc": int(head.nc),
+        "names_count": len(getattr(model, "names", {})),
+        "first_input_channels": int(first_conv.in_channels),
+        "box_output_channels": output_channels("cv2"),
+        "one2one_box_output_channels": output_channels("one2one_cv2"),
+        "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
+        "trainable_parameter_count": sum(
+            parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+        ),
+    }
+    output = Path(trainer.save_dir) / "model_contract.json"
+    output.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    trainer.yolo_model_contract = contract
+    LOGGER.info("HSI YOLO model contract: " + json.dumps(contract, sort_keys=True))
+
+
 def zero_extra_input_channel_weights(trainer: object, base_channels: int = 3) -> None:
     """Zero new first-layer channels in both the train model and its EMA copy.
 
@@ -354,6 +431,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     record_box_iou_loss(model.model, box_iou_loss)
     install_box_iou_loss(box_iou_loss)
+    model.add_callback("on_pretrain_routine_end", record_yolo_model_contract)
     model.add_callback("on_pretrain_routine_end", record_optimizer_contract)
     if args.extra_channel_init == "zero":
         model.add_callback("on_pretrain_routine_end", zero_extra_input_channel_weights)

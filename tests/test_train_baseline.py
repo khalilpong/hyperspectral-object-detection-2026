@@ -211,6 +211,54 @@ def test_record_optimizer_contract_captures_effective_values(tmp_path: Path) -> 
     assert contract["effective_warmup_bias_lr"] == 0.0
 
 
+def test_record_yolo_model_contract_captures_live_regmax_architecture(
+    tmp_path: Path,
+) -> None:
+    class DFL(torch.nn.Module):
+        def forward(self, value: torch.Tensor) -> torch.Tensor:
+            return value
+
+    class Head(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.reg_max = 16
+            self.nc = 18
+            self.dfl = DFL()
+            self.end2end = True
+            self.cv2 = torch.nn.ModuleList(
+                [torch.nn.Sequential(torch.nn.Conv2d(4, 64, 1)) for _ in range(3)]
+            )
+            self.one2one_cv2 = torch.nn.ModuleList(
+                [torch.nn.Sequential(torch.nn.Conv2d(4, 64, 1)) for _ in range(3)]
+            )
+
+    class Model(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.model = torch.nn.ModuleList(
+                [torch.nn.Conv2d(16, 4, 3), Head()]
+            )
+            self.yaml = {"reg_max": 16}
+            self.yaml_file = "yolo26m-regmax16.yaml"
+            self.names = {index: str(index) for index in range(18)}
+
+    trainer = SimpleNamespace(model=Model(), save_dir=tmp_path)
+
+    train_baseline.record_yolo_model_contract(trainer)
+
+    contract = json.loads((tmp_path / "model_contract.json").read_text(encoding="utf-8"))
+    assert contract["reg_max"] == 16
+    assert contract["yaml_reg_max"] == 16
+    assert contract["dfl_module"] == "DFL"
+    assert contract["dfl_is_identity"] is False
+    assert contract["first_input_channels"] == 16
+    assert contract["nc"] == 18
+    assert contract["names_count"] == 18
+    assert contract["box_output_channels"] == [64, 64, 64]
+    assert contract["one2one_box_output_channels"] == [64, 64, 64]
+    assert trainer.yolo_model_contract == contract
+
+
 def test_cls_pw_validates_range_and_cannot_override_resume() -> None:
     assert train_baseline.parse_args(["--cls-pw", "0.25"]).cls_pw == 0.25
 

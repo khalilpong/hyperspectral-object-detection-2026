@@ -1,7 +1,7 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-22 14:35（北京时间）
+> 最后更新：2026-09-22 15:34（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
@@ -32,8 +32,10 @@
 - RT-DETR-L 的 `zero` 额外通道初始化也已预注册为独立 fixed 单变量后备：私有本地包 `kernel_ablation_rtdetr_xczero`、远端 slug `zephyrpong/hsi-rtdetr-l-xczero-ablation`，精确 CONFIG 已检查；架构感知门禁新增了显式 `--expected-extra-channel-init zero` 校验，当前全仓 `135 passed`。它**未上传、未运行**。只有当前 random-extra-channel RT-DETR fixed 门禁失败时才允许推送一次，YOLO26m zero-init 的既有负结果不能替代这项不同架构的测量。
 - YOLO26 扩容路线已复核：YOLO26l 早已在同类 HSI16/1024/30-epoch fixed 实验中以 `0.69628` 失败，P2 与 1280 也有明确负信号，不重复；唯一未测的 YOLO26x 已预注册为最低优先级 fixed 后备 `kernel_ablation_yolo26x`（slug `zephyrpong/hsi-yolo26x-ablation`），只改 `yolo26m.pt -> yolo26x.pt`，保守单卡 attempts `2:2,1:2,1:0`。它**未上传、未运行**，排在 degrees=5、EIoU、`adamw_lr001` 与 `[13,8,5]` 之后。
 - RT-DETR 类名别名已否决：`people -> person` 与 `e-bike -> bicycle` 没有官方语义等价证据，不能把当前 4/18 精确 COCO 行迁移当作 bug。现成的 `num_denoising=200` 单变量包 `kernel_ablation_rtdetr_nd200` 已预注册（slug `zephyrpong/hsi-rtdetr-l-nd200-ablation`），它**未上传、未运行**，只在 random 与 zero extra-channel 两项 RT-DETR fixed 都失败后排队。
-- YOLO26m EIoU 已做成可审计 fixed 后备：只替换 `BboxLoss` 使用的 CIoU 符号，不改 TaskAlignedAssigner、DFL/L1、模型结构或推理；真实 YOLO26m 16 通道单 batch forward/loss/backward 全部 finite，首层梯度非零。对应私有代码数据集新版本已 `ready` 且远端清单确认含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou`（slug `zephyrpong/hsi-yolo26m-eiou-ablation`）的一次 push 在创建前因周 GPU 配额超限被拒，远端没有该 slug。RT-DETR 结束后账户页面仍显示 GPU `33:44 / 30 hrs`，因此不重推；门禁仍为 `0.70443`。
+- YOLO26m EIoU 已做成可审计 fixed 后备：只替换 `BboxLoss` 使用的 CIoU 符号，不改 TaskAlignedAssigner、DFL/L1、模型结构或推理；真实 YOLO26m 16 通道单 batch forward/loss/backward 全部 finite，首层梯度非零。对应私有代码数据集新版本已 `ready` 且远端清单确认含 EIoU 源码；本地 Kernel 包 `kernel_ablation_eiou`（slug `zephyrpong/hsi-yolo26m-eiou-ablation`）的一次 push 在创建前因周 GPU 配额超限被拒，远端没有该 slug。2026-09-22 15:34 实时刷新后账户页面显示 GPU `38:03 / 30 hrs`，因此不重推；门禁仍为 `0.70443`。
 - YOLO26m 有效 AdamW `lr0=0.001` 已做成本地可审计 fixed 后备：真实 runtime contract 证明普通 `auto` 基线实际是 `AdamW(lr=0.000455,beta1=0.9,warmup_bias_lr=0)`，新配方仍是 AdamW、beta1 `0.9`、warmup-bias `0`，唯一有效变化为初始 LR `0.000455→0.001`。两条真实 16 通道 1-epoch smoke 均通过，全仓 `141 passed`；本地包 `kernel_ablation_lr001`（slug `zephyrpong/hsi-yolo26m-lr001-ablation`）未上传、未运行，排在 EIoU 后、`[13,8,5]` 与 YOLO26x 前，详见 `experiments/yolo26m-adamw-lr001-prereg-20260922.md`。
+- YOLO26m `reg_max=16` 已完成可审计 fixed 预注册：它把当前 `reg_max=1` 的归一化 L1 路径改为真正 16-bin DFL，其他训练合同不变。真实权重审计显示可精确复用源 checkpoint 的 `99.4216%` 参数，regmax 专属 shape mismatch 仅 1,560 个源参数；真实 16 通道 forward/loss/backward 与 4 图 Trainer/contract/checkpoint smoke 均通过，全仓 `163 passed`。本地包 `kernel_ablation_rm16`（slug `zephyrpong/hsi-yolo26m-rm16-ablation`）与 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-regmax16-prereg-20260922.md`。
+- 面积分层框缩放已零 GPU 审计并否决：75 个 threshold/small-scale/large-scale 候选的三折 OOF 为 `0.70686997`，比 identity 高 `+0.00116178`，但比已经提交的全局 `×1.01` 低 `0.00063651`；full-val 最优本身就是全局 `×1.01`，折间选择也不一致。保留全局校准，停止继续扫框后处理。
 - 主办方于 2026-09-21 16:02（北京时间）发布官方帖子“【最终提醒】参赛团队信息收集即将截止”：所有团队须在 **9 月 23 日前**把团队信息发往所属赛道指定邮箱；邮件主题格式为“赛道名称－团队名称－队长姓名”，正文需列出全部队员姓名、所在单位及指导教师（如有）。逾期可能影响成绩认定和奖励。该提醒正文**没有给出目标检测赛道的指定收件邮箱**，只给出疑问联系人 `1522859637@qq.com`，不得把疑问邮箱擅自当作材料收件箱；也不能从 Kaggle 页面证明用户是否已经发送。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
 - 2026-09-22 约 14:00 的登录态 Submissions 页面显示 “5 days to go”，帮助文本为 **2026-09-27 16:00（新加坡/北京时间）**；这与此前 Rules 阶段日期不一致。提交当前确实开放，但在主办方正式澄清前，不把页面变化外推成其他 Phase/材料截止的自动延期。
 
@@ -46,7 +48,7 @@
 5. `dfl=2.0/2.5` 都已门禁失败；不要启动其 full-data，也不要上传两条作业各自产生的测试 CSV。
 6. 当前持续目标允许继续做合规的 Kaggle GPU 门禁实验；任何最终 Competition Submit 仍须在动作前单独确认，并复核单 checkpoint 血缘、Phase 2 数据覆盖与提交格式，绝不提交历史 ensemble。
 7. RT-DETR random fixed 已以 `0.69309 < 0.70443` 结束并完整审计；禁止推它的 full-data 包，也禁止提交其测试 CSV。RT-DETR 后续只按预注册顺序测试 zero-extra，再失败才测试 `num_denoising=200`。
-8. RT-DETR 终态后 GPU 配额仍显示 `33:44 / 30 hrs`，EIoU/RT-DETR-zero 作业都尚未创建。额度可用后才推送一次候选，不要用重复 push 试探。
+8. 2026-09-22 15:34 实时刷新后 GPU 配额显示 `38:03 / 30 hrs`，EIoU/RT-DETR-zero 作业都尚未创建。额度可用后才推送一次候选，不要用重复 push 试探。
 9. 单 checkpoint `boxscale101` 已在用户最终确认后提交成功：ref `56455800`，Public `0.63546`，比 `0.63072` 提升 `+0.00474`；当日额度剩 2 次。不要重复提交同一文件，也不要擅自勾选最终榜单候选。
 10. 立即向用户确认团队信息邮件是否已经发送；若未发送，先找到“目标检测赛道指定邮箱”，再由用户提供/确认团队名称、队长姓名、队员、单位和指导教师信息。发送邮件会对外传输个人信息，不能凭公告内容擅自代发。
 
@@ -67,8 +69,8 @@
 2. RT-DETR random fixed 已以 `0.69309` 失败。GPU 配额恢复且远端没有目标版本后，YOLO 分支优先只推送一次 EIoU fixed；RT-DETR 分支可独立只推送一次 zero-extra fixed。两分支互不融合，门禁均为 `0.70443`。
 3. EIoU 若失败，先跑已预注册且有 runtime contract 的 `adamw_lr001`；它失败后再考虑 HSI16 前三槽位改为 `[13,8,5]`。公开 Notebook 的 `0.7394` 有 93.36% 验证泄漏，不能作为收益证据。
 4. RT-DETR zero 若也失败、仍有额度，再只跑一次 `num_denoising=200` fixed；不要添加 COCO 类名别名。
-5. 后续新架构候选中，YOLO26m `reg_max=16` 和 YOLO11m HSI16 均只具备“值得一次 fixed 测量”的资格，尚无合法收益结果；必须先加精确架构/权重迁移审计，不能引用泄漏 Notebook 或既有 `dfl=2.0/2.5` 当证明。
-6. 只有 EIoU、`adamw_lr001`、`[13,8,5]` 和更直接的定位架构候选都失败且额度仍足，才运行已预注册的 YOLO26x fixed。YOLO26l、P2、1280 不得重复。
+5. EIoU 与 `adamw_lr001` 若失败，下一项更直接的定位架构候选是已预注册的 YOLO26m `reg_max=16`；它仍只有“值得一次 fixed 测量”的资格，绝不能把本地 smoke 或既有 `dfl=2.0/2.5` 写成精度收益。其后才比较尚未打包的 YOLO11m HSI16 与 HSI16 `[13,8,5,...]` 通道顺序。
+6. 只有 EIoU、`adamw_lr001`、`reg_max=16`、YOLO11m/通道顺序等更直接候选都失败且额度仍足，才运行已预注册的 YOLO26x fixed。YOLO26l、P2、1280 不得重复。
 7. `dfl=2.0/2.5`、YOLO26m zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、tile TTA、尺度来源/权重和 RT-DETR random-init 均已否决。框校准只保留已过 OOF 的全局 `1.01×1.01`，不继续扫参。
 8. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
@@ -138,8 +140,9 @@ kaggle kernels status zephyrpong/<slug>
 | `hsi-rtdetr-l-ablation` | 私有 Kernel version 1 `COMPLETE`；单 RT-DETR-L checkpoint、fixed 2400/600、30 epoch、1024、random extra init、`num_denoising=100`；首个 batch2/workers2/device0 attempt 成功，最佳 epoch29 `0.69309 < 0.70443`，已否决，无 Competition Submit |
 | `hsi-yolo26m-deg5-ablation` | 私有 Kernel 版本 1 `COMPLETE`；精确合同通过，最佳 epoch 29 `0.68169`、最终 `0.68092`，显著低于普通 e30 `0.70143` 与门槛 `0.70443`；已否决，不跑 full-data、不提交 |
 | `hsi-yolo26m-prgb1385-ablation` | 本地私有包已生成，`pseudo_rgb:13,8,5`、YOLO26m、fixed 2400/600、e30；尚未 `kaggle kernels push`，不是远端作业；预注册见 `experiments/yolo26m-pseudo-rgb-1385-prereg-20260922.md` |
-| `hsi-yolo26m-eiou-ablation` | 本地私有包已生成并通过公式/梯度/真实 YOLO 单 batch smoke；只改 CIoU→EIoU。一次 push 在创建作业前因周 GPU 配额超限被拒，远端没有运行版本；RT-DETR 已完成但账户仍为 `33:44 / 30 hrs`，只在额度真实恢复后推一次；预注册见 `experiments/yolo26m-eiou-prereg-20260922.md` |
+| `hsi-yolo26m-eiou-ablation` | 本地私有包已生成并通过公式/梯度/真实 YOLO 单 batch smoke；只改 CIoU→EIoU。一次 push 在创建作业前因周 GPU 配额超限被拒，远端没有运行版本；2026-09-22 15:34 实时额度为 `38:03 / 30 hrs`，只在额度真实恢复后推一次；预注册见 `experiments/yolo26m-eiou-prereg-20260922.md` |
 | `hsi-yolo26m-lr001-ablation` | 本地私有包已生成；runtime contract 证明只把有效 AdamW 初始 LR `0.000455→0.001`，beta1/warmup-bias 等保持基线；两条真实 smoke 与全仓 `141 passed`，未上传、未运行；预注册见 `experiments/yolo26m-adamw-lr001-prereg-20260922.md` |
+| `hsi-yolo26m-rm16-ablation` | 本地私有包已生成；唯一架构变量 `reg_max 1→16`，真实权重迁移、true-DFL forward/loss/backward、真实 Trainer model contract/checkpoint smoke 与全仓 `163 passed`；本地 code-dataset staging 已同步，但 dataset 新版本与 Kernel 都未上传、未运行；预注册见 `experiments/yolo26m-regmax16-prereg-20260922.md` |
 | `submission_single_m_hsi16_ms7_f074_sg0125_boxscale101.csv` | 同一 full-data YOLO26m checkpoint 的七尺度合规 CSV，仅将每框宽高 `×1.01`；三折 OOF `+0.00179829`，SHA-256 `C01214E6...995A86`；2026-09-22 14:30 `Success`，Public `0.63546`，ref `56455800`，今日余 2 次 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
@@ -238,6 +241,7 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | yolo26m（本机） | Kaggle 0.60553 | **被 8GB 显存逼到 batch=2**，不是模型不行 |
 | P2 小目标检测头 / box loss 权重 10 | 更差 | — |
 | RT-DETR-L random-extra, `num_denoising=100` | `0.69309`，比 YOLO26m baseline 低 `0.00834` | 训练/迁移/重载均正常但严格 IoU 明显落后；不跑同配方 full-data，后续变量必须独立过门禁 |
+| 面积分层框缩放 | OOF `0.70686997`，比全局 `×1.01` 低 `0.00063651` | full-val 最优仍是全局 `×1.01`，折间选择不一致；不再继续框校准扫参 |
 
 ## 训练算力：Kaggle 免费 GPU（已验证够用）
 
