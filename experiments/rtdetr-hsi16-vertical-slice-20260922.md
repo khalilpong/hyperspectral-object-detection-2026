@@ -86,3 +86,21 @@ checkpoint。RT-DETR 所需三个新/更新源码与 runner 已逐文件 SHA-256
 YOLO26m、DFL2.0/2.5 或任何其他 checkpoint 融合。架构感知
 `scripts/check_fixed_split_gate.py` 已兼容 RT-DETR，并回放两条旧 YOLO DFL
 结果保持一致。
+
+## 条件式 full-data 包（尚未推送）
+
+等待 fixed 作业期间，已于 2026-09-22 09:47（北京时间）用当前主 runner
+生成本地私有包 `kaggle_remote/kernel_full_rtdetr`，远端目标 slug 为
+`zephyrpong/hsi-rtdetr-l-full`。它只为缩短 fixed 门禁通过后的周转时间，当前
+**没有上传、没有运行，也不是提交候选**。
+
+- 单一 `rtdetr-l.pt` checkpoint，HSI16 全量 3000 张训练，30 epochs，1024；
+- attempts `2:2,1:2,1:0`，seed 2026，额外通道 random；
+- `num_denoising=100`，无多尺度、crop、tile 或第二 checkpoint；
+- 生成 runner 与主 runner 的 diff 仅为预期 CONFIG（以及 `0.70` 的等值文本
+  格式化为 `0.7`）；私有 metadata 保持 `is_private: true`；
+- 当前全仓测试 `135 passed`。
+
+只有 fixed best mAP50-95 `>=0.70443`、门禁合同与产物哈希全部通过，且 Kaggle
+GPU 配额实时恢复可用时，才允许推送该包一次。fixed 失败时不得推送；推送前还
+需根据 fixed checkpoint 的同模型单尺度/多尺度验证结果决定是否重生成推理配置。
