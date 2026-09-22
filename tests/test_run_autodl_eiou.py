@@ -9,9 +9,11 @@ from scripts import run_autodl_eiou as autodl
 
 def _minimal_layout(root: Path) -> Path:
     competition = root / "competition"
-    (competition / "VIS" / "Annotations").mkdir(parents=True)
-    (competition / "VIS" / "data_train").mkdir(parents=True)
-    (competition / "VIS" / "data_test").mkdir(parents=True)
+    (competition / "data_train" / "data_train" / "Annotations" / "VIS").mkdir(
+        parents=True
+    )
+    (competition / "data_train" / "data_train" / "VIS").mkdir(parents=True)
+    (competition / "data_test" / "data_test" / "VIS").mkdir(parents=True)
     (competition / "class.txt").write_text("class\n", encoding="utf-8")
     return competition
 
@@ -54,9 +56,9 @@ def test_safe_zip_is_audited_without_extraction(tmp_path):
             if path.is_file():
                 handle.write(path, arcname=path.relative_to(source).as_posix())
         for relative in (
-            "VIS/Annotations/example.xml",
-            "VIS/data_train/example.png",
-            "VIS/data_test/example.png",
+            "data_train/data_train/Annotations/VIS/example.xml",
+            "data_train/data_train/VIS/example.png",
+            "data_test/data_test/VIS/example.png",
         ):
             handle.writestr(relative, "x")
     competition_root, audit = autodl.choose_competition_source(
@@ -72,9 +74,9 @@ def test_safe_zip_is_audited_without_extraction(tmp_path):
 def test_safe_zip_extracts_to_hashed_work_directory(tmp_path):
     source = _minimal_layout(tmp_path / "source")
     for relative in (
-        "VIS/Annotations/example.xml",
-        "VIS/data_train/example.png",
-        "VIS/data_test/example.png",
+        "data_train/data_train/Annotations/VIS/example.xml",
+        "data_train/data_train/VIS/example.png",
+        "data_test/data_test/VIS/example.png",
     ):
         path = source / relative
         path.write_text("x", encoding="utf-8")
@@ -107,6 +109,18 @@ def test_extracted_layout_is_resolved(tmp_path):
     assert resolved == competition
     assert audit["kind"] == "directory"
     assert audit["layout"]["root"] == str(competition.resolve())
+
+
+def test_reversed_vis_layout_is_rejected(tmp_path):
+    archive = tmp_path / "reversed.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("class.txt", "class\n")
+        handle.writestr("VIS/Annotations/example.xml", "x")
+        handle.writestr("VIS/data_train/example.png", "x")
+        handle.writestr("VIS/data_test/example.png", "x")
+
+    with pytest.raises(RuntimeError, match="exactly one annotation"):
+        autodl.inspect_safe_zip(archive)
 
 
 def test_bundle_manifest_detects_drift(tmp_path, monkeypatch):

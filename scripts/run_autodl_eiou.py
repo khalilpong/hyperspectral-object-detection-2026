@@ -148,11 +148,7 @@ def _zip_member_path(name: str) -> PurePosixPath:
 def inspect_safe_zip(path: Path) -> dict[str, object]:
     """Reject traversal/symlink entries and describe a competition archive."""
     class_members: list[str] = []
-    layout_members = {
-        "annotations": False,
-        "train_images": False,
-        "test_images": False,
-    }
+    vis_directories: set[PurePosixPath] = set()
     file_count = 0
     uncompressed_bytes = 0
     with zipfile.ZipFile(path) as archive:
@@ -161,32 +157,45 @@ def inspect_safe_zip(path: Path) -> dict[str, object]:
             mode = info.external_attr >> 16
             if stat.S_ISLNK(mode):
                 raise RuntimeError(f"zip symlink entries are not allowed: {info.filename!r}")
+            directory_part_count = len(pure.parts) if info.is_dir() else len(pure.parts) - 1
+            for index in range(directory_part_count):
+                if pure.parts[index] == "VIS":
+                    vis_directories.add(PurePosixPath(*pure.parts[: index + 1]))
             if info.is_dir():
                 continue
             file_count += 1
             uncompressed_bytes += info.file_size
             if pure.name == "class.txt":
                 class_members.append(info.filename)
-            lowered = tuple(part.lower() for part in pure.parts)
-            for key, tail in {
-                "annotations": ("vis", "annotations"),
-                "train_images": ("vis", "data_train"),
-                "test_images": ("vis", "data_test"),
-            }.items():
-                if any(
-                    lowered[index : index + 2] == tail
-                    for index in range(max(0, len(lowered) - 1))
-                ):
-                    layout_members[key] = True
     if len(class_members) != 1:
         raise RuntimeError(
             f"competition zip must contain exactly one class.txt, found {class_members}"
         )
-    missing_layout = [key for key, present in layout_members.items() if not present]
-    if missing_layout:
+
+    layout_candidates = {
+        "annotations": sorted(
+            path.as_posix() for path in vis_directories if "Annotations" in path.parts
+        ),
+        "train_images": sorted(
+            path.as_posix()
+            for path in vis_directories
+            if "data_train" in path.parts and "Annotations" not in path.parts
+        ),
+        "test_images": sorted(
+            path.as_posix() for path in vis_directories if "data_test" in path.parts
+        ),
+    }
+    invalid_layout = {
+        key: candidates
+        for key, candidates in layout_candidates.items()
+        if len(candidates) != 1
+    }
+    if invalid_layout:
         raise RuntimeError(
-            f"competition zip is missing required VIS layout members: {missing_layout}"
+            "competition zip must contain exactly one annotation, training-image, and "
+            f"test-image VIS directory; invalid candidates: {invalid_layout}"
         )
+    layout_members = {key: candidates[0] for key, candidates in layout_candidates.items()}
     return {
         "path": str(path.resolve()),
         "bytes": path.stat().st_size,
@@ -210,26 +219,25 @@ def _find_unique(root: Path, predicate, label: str) -> Path:
 def audit_competition_layout(root: Path) -> dict[str, str]:
     """Validate the four raw-data anchors required by hsi_detection.layout."""
     class_file = _find_unique(root, lambda path: path.is_file() and path.name == "class.txt", "class.txt")
-
-    def has_tail(path: Path, *tail: str) -> bool:
-        parts = tuple(part.lower() for part in path.parts)
-        lowered = tuple(part.lower() for part in tail)
-        return len(parts) >= len(lowered) and parts[-len(lowered) :] == lowered
-
     annotations = _find_unique(
         root,
-        lambda path: path.is_dir() and has_tail(path, "VIS", "Annotations"),
-        "VIS/Annotations directory",
+        lambda path: path.is_dir() and path.name == "VIS" and "Annotations" in path.parts,
+        "training annotation VIS directory",
     )
     train_images = _find_unique(
         root,
-        lambda path: path.is_dir() and has_tail(path, "VIS", "data_train"),
-        "VIS/data_train directory",
+        lambda path: (
+            path.is_dir()
+            and path.name == "VIS"
+            and "data_train" in path.parts
+            and "Annotations" not in path.parts
+        ),
+        "training image VIS directory",
     )
     test_images = _find_unique(
         root,
-        lambda path: path.is_dir() and has_tail(path, "VIS", "data_test"),
-        "VIS/data_test directory",
+        lambda path: path.is_dir() and path.name == "VIS" and "data_test" in path.parts,
+        "test image VIS directory",
     )
     return {
         "root": str(class_file.parent.resolve()),

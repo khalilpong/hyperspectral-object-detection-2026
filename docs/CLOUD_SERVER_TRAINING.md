@@ -67,6 +67,12 @@ mosaic 增强会先建一张 `2048 × 2048 × 16` 的拼图画布（每张约 64
 生成器会先核对平铺代码与源文件哈希，再写 `bundle_manifest.json`。当前包不含原始比赛数据、
 Kaggle 凭据或历史输出。将该包和原始比赛 zip 放入 AutoDL 私有数据盘；不要放进“公开数据”。
 
+本机已核验的原始比赛包是
+`data/raw/hyperspectral-object-detection-challenge-2026.zip`，大小 6,694,200,518 bytes，
+SHA-256 为 `C99BE7F2F930813E0846F64931851466F8DEB3720E35AB0F5800EB0F02E0B8AE`。
+wrapper 会按与 `hsi_detection.layout.discover_layout()` 相同的规则识别
+`Annotations/VIS`、训练图 `data_train/.../VIS` 和测试图 `data_test/.../VIS`；不要手工改目录名或重打包。
+
 在实例内准备目录并解开代码包：
 
 ```bash
