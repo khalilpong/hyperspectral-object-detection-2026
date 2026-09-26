@@ -180,3 +180,84 @@ replay receipt is `artifacts/phase2_last_day_20260927/multiscale_flip_recheck.js
 All **236 pytest tests passed**; `py_compile` and `git diff --check` passed.
 Only the new validation runner, its tests and this updated report are synced to
 GitHub. No Kaggle action or scheduled task was created during this round.
+
+## Follow-up: individual flip sources (fixed before evaluation)
+
+After the combined 832+1216 result failed, the user authorized the proposed
+follow-up with "完成这一轮值得做的排查". This is a new exploratory comparison,
+not a revision of the failed combined experiment. Evaluate exactly two candidates:
+
+1. A's seven identity scales + hflip1024 + hflip832.
+2. A's seven identity scales + hflip1024 + hflip1216.
+
+Keep source order, fusion IoU0.65, support gain0.125, max_det300 and global
+boxscale1.01 fixed. Both candidates use nine sources. There is no denominator
+override, weight search, threshold sweep or vertical-flip inference. Existing
+hash-verified caches are mandatory; missing caches must stop execution.
+
+Report both candidates, all three groups, all 18 classes, box counts and gains
+against the same complete A control. Retain the gate: aggregate gain >=0.001,
+at least two positive groups, and worst group >=-0.0005. These are reused
+validation data and diagnostic groups, not an independent holdout. Do not
+upload, Submit, schedule, or change final selection as part of this assessment.
+
+### Individual-source results: both rejected
+
+The A raw and calibrated controls reproduced exactly. Both candidate caches
+passed the checkpoint/input/record hash checks, and both candidates had exactly
+nine sources. No checkpoint was loaded and zero new predictions were generated.
+
+| Calibrated pipeline | 600-image mAP50-95 | Delta vs A | Boxes | Improved classes |
+|---|---:|---:|---:|---:|
+| A | 0.7079261502266522 | 0 | 73,918 | - |
+| A + hflip832 | 0.7078146374051074 | -0.0001115128215448 | 79,227 | 10/18 |
+| A + hflip1216 | 0.7071574822284526 | -0.0007686679981995 | 80,083 | 9/18 |
+
+| Extra source | Group 1 delta | Group 2 delta | Group 3 delta | Gate |
+|---|---:|---:|---:|---|
+| hflip832 | +0.0033682734 | -0.0003322258 | -0.0001424568 | Failed: insufficient gain and only one positive group |
+| hflip1216 | +0.0025564418 | -0.0012603662 | -0.0019053178 | Failed: all three requirements |
+
+Per-class mAP50-95 changes relative to A:
+
+| Class | A + 832 delta | A + 1216 delta |
+|---|---:|---:|
+| 0: apple | -0.00220612 | -0.00036121 |
+| 1: apple_plastic | +0.00171724 | +0.00020038 |
+| 2: badminton | +0.00183700 | +0.00117167 |
+| 3: banana | +0.00025938 | +0.00266283 |
+| 4: banana_plastic | +0.00519639 | +0.00133369 |
+| 5: car | +0.00008310 | -0.00213212 |
+| 6: car_toy | -0.00247218 | -0.00303289 |
+| 7: charger_head | -0.00608987 | -0.00676940 |
+| 8: e-bike | +0.00125423 | +0.00614542 |
+| 9: egg | +0.00007621 | -0.00003570 |
+| 10: egg_plastic | -0.00274411 | -0.00179542 |
+| 11: egg_wood | +0.01185915 | +0.00062226 |
+| 12: orange | -0.00310937 | -0.00380648 |
+| 13: orange_plastic | +0.00068778 | -0.00295362 |
+| 14: people | +0.00329126 | +0.00266848 |
+| 15: rubik | -0.00208023 | +0.00421124 |
+| 16: stone_block | -0.00857319 | -0.01251178 |
+| 17: table_tennis | -0.00099392 | +0.00054664 |
+
+These class changes are diagnostics, not permission to build a retrospectively
+chosen class-specific mixture. The experiment also does not isolate whether
+the score changes are caused by geometry, detection insertion or confidence
+normalization; it measures their combined effect under the fixed recipe.
+
+Decision: neither individual source justifies a new production CSV or Submit.
+Together with the preceding combined-source result, all three tested additions
+are below A. Keep selected A/B intact and await the user's submission directions.
+No vertical flip, denominator adjustment or further parameter search was run.
+
+```powershell
+& .\.venv\Scripts\python.exe -u scripts/eval_individual_flip_last_day.py
+```
+
+Ignored result: `artifacts/phase2_last_day_20260927/individual_flip_validation.json`.
+SHA-256: `363828CBDEE54FAFCD0F1F35E00CE750DD6BDEB9ECB906DBFDF4341BB8CA5341`.
+The full-precision result contains all group and class metrics, source/input/code
+hashes and cache-only receipts. All **238 pytest tests passed**; new script/test
+`py_compile` and `git diff --check` passed. Only code, tests and this report enter
+Git; caches and result artifacts stay ignored.
