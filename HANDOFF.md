@@ -1,12 +1,12 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-26 13:10（北京时间）
+> 最后更新：2026-09-26 13:16（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 当前收尾状态（本节覆盖下方历史交接中的旧动作指令）
 
-**两个固定 flip 候选均已 COMPLETE，且 Public test-reference 都提高；最终勾选仍为 0/2，等待用户对准确 refs 单独确认。**
+**最终收尾已完成：两个固定 flip 候选均已 COMPLETE，Public test-reference 都提高；经用户明确确认，最终选择 A/B 已保存，刷新后核验为 2/2。**
 
 | 合规 Phase 2 文件 | Ref | Public test-reference | 相对 baseline | 状态 |
 |---|---:|---:|---:|---|
@@ -17,10 +17,10 @@
 - 两个新文件分别为 196,609 / 241,891 行，均覆盖 test1000 + ranking1000，零重叠、连续 row id、schema/geometry 校验通过。private score均未公布。
 - 唯一生产 checkpoint SHA-256 仍为 `8E4BFBF7...4254C3`。test 七尺度复用已有单模型 cache；ranking 因缺原始逐尺度 cache 只补建一次。test/ranking 的 1024 flip 各只推理一次，A/B 都只重做融合。两个 baseline 数值复现均通过。
 - 全套 `223 passed`，针对性测试、`py_compile` 与 diff-check通过。详细命令、哈希、风险审计和回执摘要见 [最终收尾记录](experiments/phase2-flip-finalization-20260926.md)。原始 cache、manifest、CSV、数据和权重均 ignored。
-- 用户在本任务中明确授权代理自行决定两次 Submit 的时机和次数，已据此完成 A/B。**最终 checkbox 与 Save 的独立确认要求仍有效。**
-- **建议最终只选择 refs `56569707` 与 `56569768`。** 官方补充通知明确最终 Phase 2 取所选提交中排名集最好的一次；旧 Phase 1 文件的排名集分数为零，无需占一个名额来保住 Phase 1 冻结部分。不要再沿用旧的 `56568811 + 56455800` 建议。
+- 用户先授权代理自行决定两次 Submit，随后独立明确确认最终选择 `56569707` 与 `56569768`，两项操作均已完成。
+- **最终已选择 refs `56569707` 与 `56569768`。** 官方补充通知明确最终 Phase 2 取所选提交中排名集最好的一次；旧 Phase 1 文件的排名集分数为零，无需占一个名额来保住 Phase 1 冻结部分。不要再沿用旧的 `56568811 + 56455800` 建议。
 - Phase 1 的 `0.63546` 是历史 Public 记录；该 ref 当前全 test1000 重算 Public 为 `0.62717`，本次未核实主办方另行公布的正式冻结成绩。
-- **尚未勾选任何提交，也尚未 Save。当前最终选择 0/2。** 完成前必须得到用户对上述准确 pair 的确认，再验证 2/2。绝不能选择任何历史 ensemble。
+- **最终选择 2/2 已持久保存。** 当前 Kaggle UI 勾选后自动保存，没有单独 Save 按钮；刷新后仍只有 A/B 两条 submission checkbox 被选中，baseline 和历史 ensemble 均未选中。回执：ignored `artifacts/phase2_flip_20260926/final_selection_receipt.json`。
 - 两次机会已经使用完毕，不再训练、适配 ranking、加载第二 checkpoint、扩展参数或提交其他候选。
 
 ## 历史背景（截至 2026-09-26 12:28，以下旧“当前/下一步”以本页顶部为准）

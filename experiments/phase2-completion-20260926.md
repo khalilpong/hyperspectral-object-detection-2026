@@ -2,15 +2,16 @@
 
 Date: 2026-09-26 (Asia/Singapore)
 
-Status: baseline and both authorized fixed flip candidates are COMPLETE; final
-leaderboard selection remains 0/2 pending separate user confirmation.
+Status: baseline and both authorized fixed flip candidates are COMPLETE. The user
+separately confirmed final refs 56569707 and 56569768; both are selected and saved,
+with 2/2 verified after a page reload on 2026-09-26 at 13:16 UTC+8.
 
 Continuation result: A ref `56569707` / Public `0.62865` (+0.00148); B ref
 `56569768` / Public `0.62767` (+0.00050). Both private scores remain hidden.
-Recommend selecting A + B after explicit confirmation; both cover all 2,000
-images. The user explicitly delegated Submit timing/count in the continuation,
+Final selection is A + B; both cover all 2,000 images. The live UI saves each
+checkbox immediately and has no separate Save button. The user explicitly delegated Submit timing/count in the continuation,
 superseding the original per-Submit confirmation requirement, while retaining
-separate approval for final selection. Full evidence and reproducible commands:
+separate approval for final selection, which was subsequently received and executed. Full evidence and reproducible commands:
 [phase2-flip-finalization-20260926.md](phase2-flip-finalization-20260926.md).
 
 The baseline-only and proposed-action records below are historical. The official

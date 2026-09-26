@@ -1,15 +1,16 @@
 # Phase 2 fixed horizontal-flip candidates (2026-09-26)
 
-Status: both fixed candidates are COMPLETE on Kaggle; final selection is still
-0/2 and awaits separate user confirmation for refs 56569707 and 56569768.
+Status: COMPLETE. Both fixed candidates completed on Kaggle. Following separate
+explicit user confirmation, final refs 56569707 and 56569768 were selected and
+saved; 2/2 and the exact two checked submissions persisted after a page reload.
 
 ## Authorization and scope
 
 The user authorized at most two fixed inference-only candidates, then explicitly
 authorized the agent to decide the timing and number of Kaggle Submit actions
 without another confirmation. This supersedes the earlier per-Submit confirmation
-requirement. Final leaderboard checkboxes and Save still require separate user
-confirmation. No training, ranking adaptation, other checkpoints, parameter grid,
+requirement. The separate final-selection confirmation was subsequently supplied
+by the user and executed. No training, ranking adaptation, other checkpoints, parameter grid,
 paid compute, or historical ensemble submission is permitted.
 
 Only `kaggle_remote/outputs/full/kaggle_full_yolo26m_e30/last.pt` is loaded for
@@ -170,16 +171,21 @@ The final API inventory was checked, including older single-model refs 56455800,
 full Phase 2 candidate was found. Historical `submission_ens*.csv` files are
 excluded regardless of their displayed scores.
 
-Recommendation: select **56569707 (A) and 56569768 (B)**. Both have tiny positive
+Final selected pair: **56569707 (A) and 56569768 (B)**. Both have tiny positive
 prior fixed-validation deltas and improved Public test-reference scores; they
 offer two distinct fixed fusion outcomes for hidden ranking evaluation. This is
 an evidence-based choice under uncertainty, not proof that either private score
 exceeds baseline. Retain baseline and all original evidence locally.
 
-No final submission checkbox or Save was clicked. The live counter remained
-**0/2** after both candidates completed. The user must confirm the exact pair
-before this final action. Two Submit opportunities were used; do not run further
-candidates or reuse tomorrow's quota for new experiments.
+The counter was initially **0/2** after both candidates completed. The user then
+explicitly confirmed final refs **56569707 and 56569768**. Each checkbox was
+selected in the live UI, which saves immediately and shows a confirmation toast;
+no separate Save button exists on the current page. A full reload verified
+**2/2**, with exactly the A/B submission checkboxes checked and all other
+submission checkboxes unchecked. Verification time: **2026-09-26 13:16 UTC+8**.
+The ignored receipt is `artifacts/phase2_flip_20260926/final_selection_receipt.json`.
+Two Submit opportunities were used; do not run further candidates or reuse
+tomorrow's quota for new experiments.
 
 ## Official final-selection interpretation
 

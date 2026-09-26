@@ -1,13 +1,13 @@
 # Phase 2 最后两次提交机会交接（2026-09-26）
 
-## 执行后更新（2026-09-26 13:10，北京时间；覆盖下方原始计划）
+## 执行后更新（2026-09-26 13:16，北京时间；覆盖下方原始计划）
 
 - A 已 `COMPLETE`：ref `56569707`，Public test-reference `0.62865`，较 baseline `+0.00148`。
 - B 已 `COMPLETE`：ref `56569768`，Public test-reference `0.62767`，较 baseline `+0.00050`。
 - 两者 private score仍隐藏；均为完整 2,000 图，分别 196,609 / 241,891 行，严格校验和审计已完成。
 - test 七尺度 cache成功复用；ranking 原始逐尺度 cache确实不存在，按用户缺缓存时可新增窄生产路径的要求补建，并精确复现 baseline。两个 split 的 flip各仅推理一次，A/B 构建全为 0 新推理。
-- 用户在新任务中明确取消逐次 Submit 确认，由代理自行决定，已经依此使用两次额度；**最终勾选与 Save 仍需独立确认**。
-- 推荐最终选择 **`56569707 + 56569768`**。当前仍 **0/2，未勾选/未 Save**。旧 Phase 1-only ref无需占最终名额，其 ranking部分为0；此结论已按官方补充通知现场复核。
+- 用户先取消逐次 Submit 确认，随后又明确独立确认最终选择 `56569707 + 56569768`；两个 Submit 和最终选择均已完成。
+- **最终已选择 `56569707 + 56569768`，刷新后仍为 2/2。** 当前 UI 勾选自动保存，无单独 Save 按钮；只选中 A/B，未选中 baseline 或历史 ensemble。旧 Phase 1-only ref无需占最终名额，其 ranking部分为0；此结论已按官方补充通知现场复核。
 - 完整哈希、命令、测试、风险与回执见 [phase2-flip-finalization-20260926.md](experiments/phase2-flip-finalization-20260926.md)。全套 223 pytest通过。本次 Git 范围仅限代码、测试与 Markdown文档；数据/CSV/cache/manifest/权重均不进 Git。
 
 ## 以下为执行前原始交接（保留历史依据）
