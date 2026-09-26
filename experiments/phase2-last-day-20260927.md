@@ -24,9 +24,11 @@ three submissions per day; the supplementary notice still gives September 27
   `8E4BFBF7AC36BAA55274C464EF3A8BC6581C1450601AB4DFB97D3D8FAA4254C3`.
 - The full-data checkpoint saw all 3,000 labelled training images. Scoring it
   on the old 600-image split cannot establish out-of-sample improvement.
-- Permission to load the original 2400/600 ablation checkpoint **for offline
-  validation only** was asked in this task and is still pending. Do not load it
-  until the user answers. Existing hash-pinned validation caches can be analyzed.
+- After the original 2400/600 ablation checkpoint was explained as necessary
+  **for offline validation only**, the user instructed: "请你开始完成这轮提升".
+  This authorizes the proposed validation round. Its hash is
+  `A4E7B10B93CADC241F6C6E10BEB9DFEE4E0887F96C265EC022323AE82C4C7657`.
+  Validation and production predictions must never be combined.
 - Raw data, CSVs, caches, manifests and private receipts remain ignored.
 
 ## Concrete work
@@ -37,7 +39,7 @@ metrics must reproduce to 1e-10 before interpreting calibrated results. Report
 three deterministic 200-image groups and per-class changes. These are diagnostic
 groups within an already tuned validation set, not fresh untouched holdout data.
 
-Next hypothesis, subject to the validation-checkpoint permission: add horizontal
+The now-authorized hypothesis: add horizontal
 flips at 832 and 1216 to A's existing seven identity scales and 1024 flip, while
 holding fusion IoU 0.65, support gain 0.125, max_det 300 and boxscale1.01 fixed.
 This tests added input evidence instead of repeating failed parameter grids.
@@ -110,3 +112,71 @@ was performed in this assessment. The user will direct tomorrow's submissions.
 Validation: all **229 pytest tests passed**, both new scripts passed
 `py_compile`, and `git diff --check` was clean. Both result JSONs are ignored;
 only the two analysis scripts, their tests and this report enter Git.
+
+## Authorized multi-scale flip validation
+
+Before running, freeze this single candidate: identity sources in scale order
+832/896/960/1024/1088/1152/1216, then existing hflip1024, then new hflip832 and
+hflip1216. Keep fusion IoU0.65, support gain0.125, max_det300 and boxscale1.01.
+No grid or retrospective choice of a flip subset is part of this experiment.
+The gate is >=0.001 mAP improvement over complete A, at least two positive
+200-image diagnostic groups, and no group worse than -0.0005.
+
+Every new prediction is cached with its own immutable hash receipt. Resume
+must validate both record and receipt; a partially saved pair is rejected.
+The checkpoint file is hashed before/after inference; eval/inference_mode is
+enforced and runtime state is compared after the first new prediction and at
+the end of each new source. This runtime hash scope excludes setup/first forward.
+
+```powershell
+& .\.venv\Scripts\python.exe -u scripts/eval_multiscale_flip_last_day.py --generate
+```
+
+Only if this candidate passes will the same extra sources be generated using
+the production checkpoint for test/ranking, followed by complete CSV auditing.
+There is still no upload, Submit, schedule or final-selection authorization now.
+
+### Multi-scale flip outcome: rejected
+
+The two new validation passes completed once each (600 images at 832 and 600
+at 1216), using only the original fixed-split ablation checkpoint. Both the raw
+A control (0.7058779597408886) and complete calibrated A control reproduced
+exactly before scoring the candidate.
+
+| Complete calibrated pipeline | 600-image mAP50-95 | Change from A | Boxes |
+|---|---:|---:|---:|
+| A: seven identity scales + hflip1024 | 0.7079261502266522 | 0 | 73,918 |
+| A + hflip832 + hflip1216 | 0.7062868346418375 | **-0.0016393155848147** | 85,131 |
+
+The three 200-image group changes are **+0.0017568320 / -0.0029026861 /
+-0.0018801706**. Only 6 of the 18 classes improve. The candidate adds 11,213
+boxes (+15.17%) while reducing aggregate precision-recall performance; more
+predictions are not evidence of a better detector. It fails all three fixed
+gate requirements: minimum aggregate gain, at least two positive groups, and
+the worst-group floor. No subset or parameter was selected after this result.
+
+Decision: **do not produce or submit this configuration**. No production
+checkpoint, test image or ranking image was loaded in this experiment. A/B
+remain the selected final pair; the current best Public test-reference remains
+A's 0.62865, and ranking private performance is still unknown.
+
+Evidence remains local and ignored:
+
+- `artifacts/phase2_last_day_20260927/multiscale_flip_validation.json`
+- `artifacts/phase2_last_day_20260927/validation_inputs.json`
+- `artifacts/phase2_last_day_20260927/validation_flip_cache/{832,1216}/`
+
+The runner also checks that the frozen evidence's checkpoint, identity-cache
+and 1024-flip-cache hashes agree with the pinned inputs before cache loading.
+Its cache-only replay command is:
+
+```powershell
+& .\.venv\Scripts\python.exe -u scripts/eval_multiscale_flip_last_day.py
+```
+
+Cache-only replay completed with **zero new inference**. Aggregate, all three
+group and all 18 per-class mAP values are exactly equal to the first run. The
+replay receipt is `artifacts/phase2_last_day_20260927/multiscale_flip_recheck.json`.
+All **236 pytest tests passed**; `py_compile` and `git diff --check` passed.
+Only the new validation runner, its tests and this updated report are synced to
+GitHub. No Kaggle action or scheduled task was created during this round.
