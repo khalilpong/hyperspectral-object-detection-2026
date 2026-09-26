@@ -1,17 +1,20 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-23 15:40（北京时间）
+> 最后更新：2026-09-26 12:18（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
 
-**本项目账号历史显示的最高分是 0.65091，但它来自八模型融合，违反当前比赛的单模型规则，不能作为安全的最终成绩。** Kaggle 上传时只按 CSV 评分，不会自动检查训练/推理用了几个模型；资格风险会留到规则与获奖代码审核。当前已验证合规的 Public 最佳是 **0.63546**：单个 YOLO26m HSI16 checkpoint 的七尺度支持票推理，再对每个框做全局宽高 `×1.01` 校准（Kaggle ref `56455800`）。2026-09-22 公开榜前三已升至 `0.68044 / 0.67659 / 0.67269`，但没有公开其方法或单模型血缘。
+**Phase 2 已完成合规提交，当前只剩最终榜单勾选。** Kaggle ref `56568811` 于 2026-09-26 12:13（北京时间）完成，Public test-reference 为 `0.62717`，ranking private score 仍由 Kaggle 隐藏。该提交沿用 Phase 1 合规单 YOLO26m checkpoint：冻结的 test1000 预测与 inference-only ranking1000 预测合并，共 2,000 图、198,063 行，最终 CSV SHA-256 `1744A354...56C5E23`。Phase 1 合规最佳仍是 ref `56455800` / Public `0.63546`。账号历史最高 `0.65091` 来自违规八模型融合，绝不能选为最终提交。
 
 - 官方 Rules 要求只能使用一个 detection model；主办方进一步明确：同一训练模型的 TTA/多尺度允许，不同模型的 voting、weighted fusion、post-NMS fusion 禁止。官方澄清：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/727863>。
 - `0.63917` 到 `0.65091` 的历史多模型成绩仅保留作研究记录；**禁止再提交任何 ensemble 文件，也不要把它们选为最终提交**。
 - 第二个合规单模型候选已于 2026-09-20 19:27（北京时间）提交成功：同一个 YOLO26m checkpoint、七尺度、`fusion_iou=0.74`、`support_gain=0.125`。Public `0.63072`，较上一版 `0.63066` 仅提升 `+0.00006`；CSV 98,556 条、1000/1000 图、无效框 0，SHA-256 `E6F5BC18...2CB48E`，ref `56392305`。这证明细扫方向为正，但幅度已不足以承担 0.66 冲刺。
 - 同 checkpoint 框校准候选已于 2026-09-22 14:30（北京时间）提交并 `Success`：在上述 `f0.74/support_gain=0.125` 的框上保持中心不变、宽高统一放大 1%。三折 held-out 增益均为正，合并 `0.70570818→0.70750647`（`+0.00179829`）；Public `0.63546`，相对原合规最佳 `0.63072` 提升 `+0.00474`。CSV 仍为 98,556 条/1000 图，SHA-256 `C01214E6...995A86`，ref `56455800`；这是新的合规安全线。
+- Phase 2 ranking 数据已按官方清单选择性取得：1,000 张 16-bit grayscale PNG，官方总字节数 `3,893,334,217`；ranking-only ZIP SHA-256 `C6734C0D...1D590`。预处理严格复用 HSI16 band order `[5,8,13,0,1,2,3,4,6,7,9,10,11,12,14,15]` 和 per-image shared P0.5/P99.5 uint8 合同，无训练、伪标签、BN 更新或其他模型状态适配。
+- Phase 2 ranking 推理只加载既有 checkpoint SHA-256 `8E4BFBF7...4254C3`，使用七尺度 `832/896/960/1024/1088/1152/1216`、`fusion_iou=0.74`、`support_gain=0.125`、`max_det=300`，再应用已审计的全局 boxscale101。ranking CSV 为 99,507 行/1,000 图，SHA-256 `1F9947E0...95B42`。
+- 严格合并器核验 frozen Phase 1 CSV SHA-256 `C01214E6...995A86`、ranking CSV、checkpoint 与 lineage manifest；test/ranking ID overlap 为 0，最终 2,000 图覆盖完整、行 ID 连续、无 geometry/schema 问题。Kaggle ref `56568811` 状态 `COMPLETE`；最终选择仍为 `0/2`，必须在动作前确认后只勾选 refs `56568811` 与 `56455800`。
 - zero-init 私有消融已完成并否决：最佳 `0.69690`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交。
 - object-crop 私有消融已完成并否决：标准 full-val `0.69772`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交，也不扩展 tile。
 - P1–P99 已否决：固定划分 `0.69668 < 0.70143`；不要重复训练或提交其第九成员候选。
@@ -26,7 +29,7 @@
 - RT-DETR-L HSI16 random-extra fixed 作业已完成并否决：私有 `zephyrpong/hsi-rtdetr-l-ablation` version 1 成功跑完 30 轮、batch 2/workers 2/device 0，最佳 epoch 29 `mAP50-95=0.69309`、最终 `0.69294`，比 YOLO26m 基线低 `0.00834`、比门槛低 `0.01134`。fresh reload 证实 16-channel stem、18 类、`num_denoising=100`；300,000 行测试 CSV 结构有效但不得提交。
 - RT-DETR-L 条件式 full-data 私有包 `kaggle_remote/kernel_full_rtdetr` 仍只在本地；由于 random fixed 已失败，**永不推送该 full-data 包**。RT-DETR 分支只剩 zero-extra fixed，再失败才轮到 `num_denoising=200`，二者均须等 GPU 配额真实恢复。
 - YOLO26m `degrees=5` fixed-split 单变量作业已完成并否决：合同审计通过，首个 batch 8/workers 2 attempt 正常完成；最佳 epoch 29 `mAP50-95=0.68169`，最终 `0.68092`，比普通 e30 `0.70143` 低 `0.01974`，比 `0.70443` 门槛低 `0.02274`。不跑 full-data，不上传其测试 CSV，无 Competition Submit。
-- Phase 2/ranking-set 风险已于 06:00 用 Kaggle CLI 完整枚举 36 页官方文件清单：当前仍恰好 7,003 项（`data_train` 6,000、`data_test` 1,000、另外 3 个根文件），没有 ranking 路径或 2026-08-22 之后的新文件；现有 1,000-test 契约仍正确，但 ranking set 真正发布后必须重新核验。
+- Phase 2/ranking set 已发布并完成独立清单、下载、哈希、预处理、推理和合并审计；官方 ranking 精确 1,000 张，与 test1000 的 image ID 集合无重叠。不得再重复下载、推理或提交同一文件。
 - 公开 `YOLO11m + [13,8,5]` Notebook 显示的 `0.7394` 已证实存在严重重复泄漏：其双 `**` glob 把 3,000 张训练 PNG 列成 6,000 条，实际 844 张 val 中有 788 张（93.36%）也在 train，test 也从 1,000 重复为 2,000 条。该分数不得与 fixed 2400/600 门禁比较，也不据此启动 full-data；完整证据见 `experiments/latest-public-strategy-research-20260922.md`。
 - `[13,8,5]` 伪 RGB 后备 fixed 实验已预注册并生成独立私有本地包 `kernel_ablation_prgb1385`；当前全仓 `135 passed`，生成 runner 与主 runner 只差预期 CONFIG。该包**未上传、未运行**，只有 degrees=5 与 EIoU 审计后仍值得投入时才考虑推送，门禁仍为 `0.70443`。
 - RT-DETR-L 的 `zero` 额外通道初始化也已预注册为独立 fixed 单变量后备：私有本地包 `kernel_ablation_rtdetr_xczero`、远端 slug `zephyrpong/hsi-rtdetr-l-xczero-ablation`，精确 CONFIG 已检查；架构感知门禁新增了显式 `--expected-extra-channel-init zero` 校验，当前全仓 `135 passed`。它**未上传、未运行**。只有当前 random-extra-channel RT-DETR fixed 门禁失败时才允许推送一次，YOLO26m zero-init 的既有负结果不能替代这项不同架构的测量。
@@ -34,7 +37,7 @@
 - RT-DETR 类名别名已否决：`people -> person` 与 `e-bike -> bicycle` 没有官方语义等价证据，不能把当前 4/18 精确 COCO 行迁移当作 bug。现成的 `num_denoising=200` 单变量包 `kernel_ablation_rtdetr_nd200` 已预注册（slug `zephyrpong/hsi-rtdetr-l-nd200-ablation`），它**未上传、未运行**，只在 random 与 zero extra-channel 两项 RT-DETR fixed 都失败后排队。
 - YOLO26m EIoU 已在 AutoDL 重庆 743 单机完成严格 fixed：30/30、batch 8/workers 2，最佳 epoch 29 `mAP50-95=0.70128`、最终 `0.70106`，比 `0.70443` 门禁低 `0.00315`，因此明确 NO-GO，不跑 full-data。正式 wrapper 在训练后因远端缺少 `pandas` 停于测试推理，留下完整权重/合同/失败归档；这不改变 fixed 精度结论，也不得以“补依赖”为由推进 full-data。
 - YOLO26m 有效 AdamW `lr0=0.001` 本机 fixed 已完成并否决：严格 2400/600、30 轮、batch 2/workers 0，最佳/最终 epoch 30 `mAP50-95=0.67233`，比普通 fixed `0.70143` 低 `0.02910`、比门禁 `0.70443` 低 `0.03210`。进程正常退出、stderr 为空，runtime optimizer/model contracts 与 fresh `best.pt` reload 均通过；不跑 full-data、不生成正式 CSV、不提交。详见 `experiments/local-adamw-lr001-run-20260923.md`。
-- 用户随后明确决定停止继续冲奖和调参，把仓库与原始证据保留为后续 AI 学习资料；但又于 2026-09-23 明确要求“虽然不冲奖但还是把比赛完成”。因此不得再启动 `reg_max=16`、通道顺序、YOLO11m/26x、fixed/full-data 或其他探索性训练；必须保留现有合规 Phase 1 成绩，并在 ranking set 发布后完成 Phase 2 的单 checkpoint 推理、test+ranking 合并 CSV 与校验。Kaggle 上传、Submit 和最终选择仍须分别在动作前取得用户确认。一次因上下文重置误启动的 `reg_max=16` 本机进程在第 1 轮完成前已按精确 PID 树停止，没有 `results.csv` 或权重，不能当作实验结果。
+- 用户明确决定停止继续冲奖和调参，但仍要完成比赛。该完赛范围现已完成到 Phase 2 `COMPLETE` 提交；不得再启动 `reg_max=16`、通道顺序、YOLO11m/26x、fixed/full-data、重复 inference 或其他探索性任务。最后仅剩动作前确认后的最终榜单勾选。一次因上下文重置误启动的 `reg_max=16` 本机进程在第 1 轮完成前已按精确 PID 树停止，没有 `results.csv` 或权重，不能当作实验结果。
 - YOLO26m `reg_max=16` 已完成可审计 fixed 预注册：它把当前 `reg_max=1` 的归一化 L1 路径改为真正 16-bin DFL，其他训练合同不变。真实权重审计显示可精确复用源 checkpoint 的 `99.4216%` 参数，regmax 专属 shape mismatch 仅 1,560 个源参数；真实 16 通道 forward/loss/backward 与 4 图 Trainer/contract/checkpoint smoke 均通过。一次上下文重置后的本机误启动在第 1 轮完成前即按用户“停止优化”决定中止，没有 `results.csv` 或权重，故仍无 fixed 精度结论，绝不能续跑或引用成正负结果。
 - 普通 HSI16 `[13,8,5,...]` 通道顺序候选已完成可审计 fixed 预注册：它仍是同一 16 个物理 band、同一 shared P0.5-P99.5 uint8、同一标签/manifest，只把 pretrained RGB 三个数组槽位的物理映射从 `[5,8,13]` 改为 `[13,8,5]`。新 `preparation_config/report/dataset/manifest` 合同与哈希门禁、独立数据目录会拒绝静默复用 baseline NPY；合成集端到端测试证明数组只发生预期 permutation，标签、manifest 与 normalization bounds 不变。全仓 `177 passed`；本地私有包 `kernel_ablation_order1385`（slug `zephyrpong/hsi-yolo26m-order1385-ablation`）和 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-hsi16-order1385-prereg-20260922.md`。
 - YOLO11m HSI16 checkpoint-native 候选也已完成可审计 fixed 预注册：官方 Ultralytics Assets `v8.4.0` 权重已下载并验 SHA-256 `D5FFC1A6...305B95`（40,684,120 bytes）；真实架构是 `reg_max=16`、true DFL、非 end-to-end Detect。HSI16/18 类目标可精确复用源 checkpoint 的 `99.6848%` 参数；真实 forward/loss/backward、4 图 Trainer、model/optimizer contract、保存后 fresh reload 与全仓 `184 passed` 均通过。本地私有包 `kernel_ablation_yolo11m_rm16`（slug `zephyrpong/hsi-yolo11m-rm16-ablation`）及 code-dataset staging 已就绪但**未上传、未运行**；来源种类、权重大小和 SHA-256 都进入 status/gate，详见 `experiments/yolo11m-hsi16-prereg-20260922.md`。
@@ -44,7 +47,7 @@
 - distinct-scale support-count 排序已零 GPU 审计并否决：固定单 checkpoint 七尺度、`fusion_iou=0.74`、全局框 `×1.01`，只用 `gamma` 奖励独立尺度票数；三折与 full 均保留现有 confidence-mass `support_gain=0.125`。最佳 count-only `gamma=0.08` 仅 `0.70590884`，比 incumbent `0.70750647` 低 `0.00159764`；不生成 CSV、不提交，停止继续置信度排序扫参。
 - 当前 incumbent 的最终 `max_det` 已按预注册网格 `{200,300,400,500}` 做零 GPU OOF 审计并否决：三折与 full 均保留 `300`，OOF 仍为 `0.70750647`；`500/200/400` 分别低 `0.00058980/0.00105322/0.00114808`。不生成 CSV、不提交，不做自适应 cap 扩展。
 - 主办方于 2026-09-21 16:02（北京时间）发布官方帖子“【最终提醒】参赛团队信息收集即将截止”：所有团队须在 **9 月 23 日前**把团队信息发往所属赛道指定邮箱；邮件主题格式为“赛道名称－团队名称－队长姓名”，正文需列出全部队员姓名、所在单位及指导教师（如有）。逾期可能影响成绩认定和奖励。该提醒正文**没有给出目标检测赛道的指定收件邮箱**，只给出疑问联系人 `1522859637@qq.com`，不得把疑问邮箱擅自当作材料收件箱；也不能从 Kaggle 页面证明用户是否已经发送。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
-- 2026-09-22 官方补充通知 Discussion `742487` 覆盖冲突 Rules：Phase 1 于 **2026-09-25 16:00 北京时间**冻结；ranking set 随后发布，Phase 2 至 **2026-09-27 16:00**，切换窗口 16:00–17:00 不建议提交。Phase 2 每个 CSV 必须同时覆盖 test 1000 + ranking 1000；最终分数为冻结 Phase 1 与 Phase 2 各 50%，且最多手工指定 2 个最终提交。ranking 数据只能无状态推理，不能训练、伪标签、BN 统计更新或自适应。用户已要求完成比赛：2026-09-25 17:00 后应下载 ranking set，使用现有合规单 checkpoint 血缘生成 ranking 预测，与 test 预测合并并完整校验；上传、Submit、最终选择仍逐项等待确认。线程心跳自动化 `hsi-phase-2` 已启用，每小时检查，状态无变化时保持安静。
+- 2026-09-22 官方补充通知 Discussion `742487` 覆盖冲突 Rules：Phase 1 于 **2026-09-25 16:00 北京时间**冻结；Phase 2 至 **2026-09-27 16:00**。Phase 2 每个 CSV 必须同时覆盖 test 1000 + ranking 1000；最终分数为冻结 Phase 1 与 Phase 2 各 50%，且最多手工指定 2 个最终提交。ranking 数据只能无状态推理，不能训练、伪标签、BN 统计更新或自适应。本项目已按该合同完成 ref `56568811`；私榜仍隐藏，最终勾选待用户确认。
 
 ## 👉 接手后第一件事
 
@@ -53,11 +56,11 @@
 3. phase-aware fixed split 已以 `0.69935 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
 4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
 5. `dfl=2.0/2.5` 都已门禁失败；不要启动其 full-data，也不要上传两条作业各自产生的测试 CSV。
-6. 终止继续优化：不再启动任何 fixed/full-data/Kaggle GPU/AutoDL 训练或新候选；但完赛流程仍待 Phase 2。ranking 发布后只使用现有合规单 checkpoint 做无状态推理，生成 test1000+ranking1000 合并 CSV并校验，绝不提交历史 ensemble。
+6. 终止继续优化：Phase 2 已用现有合规单 checkpoint 完成无状态 ranking 推理、test1000+ranking1000 合并和 Kaggle Submit。不要重复推理或提交；只剩最终勾选。
 7. RT-DETR random fixed 已以 `0.69309 < 0.70443` 结束并完整审计；禁止推它的 full-data 包、提交其测试 CSV或继续 zero/nd200 分支。
 8. Kaggle GPU 配额最后一次登录态刷新为 `38:03 / 30 hrs`；AutoDL 743 实例已关机且余额最后为 `-1.01` 元。完赛不需要继续试探配额、开机、充值或恢复远端依赖。
 9. 私有 bundle、原始 ZIP、远端训练权重/合同与失败归档都保留作学习证据；不得公开分享或清理。Phase 2 只复用已验证的 incumbent 权重与本地推理链。
-10. 单 checkpoint `boxscale101` 已在用户最终确认后提交成功：ref `56455800`，Public `0.63546`，比 `0.63072` 提升 `+0.00474`；历史额度快照已过期。不要重复提交同一 Phase 1 文件；Phase 2 合并 CSV、Submit 与最终选择分别等待动作前确认。
+10. 单 checkpoint `boxscale101` Phase 1 ref `56455800` / Public `0.63546`，Phase 2 combined ref `56568811` / Public test-reference `0.62717` 均已 `COMPLETE`。不要重复提交；最终选择动作仍等待单独确认。
 11. 立即向用户确认团队信息邮件是否已经发送；若未发送，先找到“目标检测赛道指定邮箱”，再由用户提供/确认团队名称、队长姓名、队员、单位和指导教师信息。发送邮件会对外传输个人信息，不能凭公告内容擅自代发。
 
 ### 成绩与合规状态
@@ -69,11 +72,12 @@
 | 单模型 m + 七尺度支持票，`f0.70/gain0.125` | 0.63066 | 合规；ref `56379896` |
 | 单模型 m + 七尺度支持票，`f0.74/gain0.125` | 0.63072 | 原合规最佳；ref `56392305` |
 | **单模型 m + 上述七尺度 + 全局框宽高 `×1.01`** | **0.63546** | **当前已验证的合规最佳；ref `56455800`；较前者 `+0.00474`** |
+| **Phase 2：冻结 test1000 + inference-only ranking1000，同 checkpoint 配方** | **0.62717（Public test-reference）** | **`COMPLETE`；ref `56568811`；ranking private score 尚未公布；最终选择待确认** |
 | 两到八模型融合 | 0.63917 ~ 0.65091 | **不合规，历史记录，不得再提交/最终选择** |
 
 ### 若未来明确重启时的候选（当前全部停止）
 
-1. `boxscale101` 已 `Success` 并把合规安全线提高到 `0.63546`，不要重复提交。当前最终榜单仍是 `0/2` 手工选择；截止前经用户单独确认后，至少手工选择 ref `56455800`，第二个安全候选可选 ref `56392305`，绝不能让 Kaggle 自动选中历史不合规 ensemble。
+1. Phase 1 `boxscale101` ref `56455800` 与 Phase 2 combined ref `56568811` 均已 `COMPLETE`，不要重复提交。当前最终榜单仍是 `0/2`；经用户单独确认后只选择这两条合规记录，绝不能让 Kaggle 自动选中历史不合规 ensemble。
 2. EIoU fixed 已以 `0.70128` 失败，AdamW `lr0=0.001` 本机 fixed 已以 `0.67233` 失败。不要续跑或转 full-data。
 3. 冻结的研究队列下一项原为 `reg_max=16`，再考虑普通 HSI16 `[13,8,5,...]` 通道顺序；当前用户已停止优化，两项都不得启动。公开 Notebook 的 `0.7394` 有 93.36% 验证泄漏，不能作为收益证据。
 4. RT-DETR zero 若也失败、仍有额度，再只跑一次 `num_denoising=200` fixed；不要添加 COCO 类名别名。
@@ -82,7 +86,7 @@
 7. `dfl=2.0/2.5`、YOLO26m zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、tile TTA、尺度来源/权重、support-count 排序、最终 `max_det` 网格和 RT-DETR random-init 均已否决。框校准只保留已过 OOF 的全局 `1.01×1.01`，不继续扫参。
 8. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
-> 官方补充通知下提交额度每天 3 次；历史“余 2 次”只是 2026-09-22 快照，已过期。当前停止调参但继续完成比赛：Phase 2 候选可在本地准备和校验，任何上传、Submit 或最终勾选仍须实时复核额度/阶段/文件并取得动作前确认，且绝不能让 Kaggle 自动选中历史不合规 ensemble。
+> Phase 2 ref `56568811` 已完成，且没有消耗额外训练额度。不要再次上传或 Submit。最终勾选前必须实时核对 ref/文件名，并取得动作前确认；绝不能让 Kaggle 自动选中历史不合规 ensemble。
 
 ### 常用命令（Git Bash，项目根目录）
 
@@ -117,7 +121,7 @@ kaggle kernels status zephyrpong/<slug>
 
 ### git 状态
 
-**核心代码、文档和实验记录持续提交到本地仓库**（最新提交以 `git log -1 --oneline` 为准），**没有 push**。
+**核心代码、文档和实验记录持续提交到本地仓库**（最新提交和远端同步状态以 `git log -1 --oneline`、`git status -sb` 为准）。2026-09-26 用户已明确授权把最终安全收尾推送到 GitHub；推送时只允许代码、测试和文档，不得包含数据、权重、CSV 或 ignored artifacts。
 远程是 `origin = https://github.com/khalilpong/hyperspectral-object-detection-2026.git`。
 **push 之前先确认这个 GitHub 仓库是私有的**：文档里有比赛方法和成绩细节，比赛期间不宜公开。改完东西记得再 `git status` 看一眼，别让新文件漏提交。
 
@@ -153,6 +157,7 @@ kaggle kernels status zephyrpong/<slug>
 | `hsi-yolo26m-rm16-ablation` | 本地私有包与 smoke 已完成；一次本机误启动在首轮完成前停止，没有结果/权重；当前用户停止优化，禁止续跑或上传 |
 | `hsi-yolo11m-rm16-ablation` | 本地私有包已生成；checkpoint-native 官方 `yolo11m.pt` SHA-256 `D5FFC1A6...305B95`，HSI16/18 类精确形状迁移率 `99.6848%`，true-DFL forward/loss/backward、真实 Trainer model/optimizer contract、fresh reload 和全仓 `184 passed`；本地 code-dataset staging 已同步，但 dataset 新版本与 Kernel 都未上传、未运行；预注册见 `experiments/yolo11m-hsi16-prereg-20260922.md` |
 | `submission_single_m_hsi16_ms7_f074_sg0125_boxscale101.csv` | 同一 full-data YOLO26m checkpoint 的七尺度合规 CSV，仅将每框宽高 `×1.01`；三折 OOF `+0.00179829`，SHA-256 `C01214E6...995A86`；2026-09-22 14:30 `Success`，Public `0.63546`，ref `56455800`；旧“今日余 2 次”快照已过期，不得复用 |
+| `submission_phase2_single_m_hsi16_ms7_f074_sg0125_boxscale101.csv` | Phase 2 合并 CSV；冻结 test1000 + inference-only ranking1000，单 checkpoint，198,063 行/2,000 图，SHA-256 `1744A354...56C5E23`；2026-09-26 `COMPLETE`，Public test-reference `0.62717`，ref `56568811`；CSV 本体 ignored，不得公开推送 |
 | Notebook `hsi-yolo26-smoke` | ❌ 第一次失败的旧版本，可忽略或删除 |
 | ⚠️ 已训好的模型不要重训 | 权重都已下载在 `kaggle_remote/outputs/*/…/last.pt`，重训只会白耗额度 |
 
@@ -166,6 +171,7 @@ kaggle kernels status zephyrpong/<slug>
 | 当前公开榜前三（2026-09-23 登录态快照） | **0.68118 / 0.67803 / 0.67795**；方法与单模型血缘未公开 |
 | 本项目账号历史显示最高 | **0.65091**（八模型融合，提交编号 56378610；当前规则下不合规，不得作为最终提交） |
 | 已验证合规最佳 | **0.63546**（单 YOLO26m checkpoint + 七尺度支持票 + 全局框宽高 `×1.01`，提交编号 56455800；较原合规最佳 ref 56392305 提升 `0.00474`，较原始 ref 56303572 提升 `0.00593`） |
+| Phase 2 提交 | **COMPLETE**，ref `56568811`，Public test-reference `0.62717`；ranking private score 尚未公布；最终选择待确认 |
 | 历史显示排名 | 第 23（2026-09-23 登录态快照，仍以不合规 ensemble `0.65091` 计；不代表安全名次） |
 | 提交额度 | **每天 3 次**（09-18 实测：第 4 次报 400 Bad Request），**UTC 零点重置（北京时间 08:00）**；Kaggle 保留历史最佳，提交差的不会掉排名 |
 | Kaggle 账号 | `zephyrpong` |
@@ -297,6 +303,7 @@ Kaggle 周额度最后实测为 `38:03 / 30 hrs`。AutoDL 重庆 743 曾成功�
 | [docs/CLOUD_SERVER_TRAINING.md](docs/CLOUD_SERVER_TRAINING.md) | 云服务器训练：配置选型、从零到提交的完整步骤 |
 | [docs/AUTONOMOUS_RUN_2026-09-17.md](docs/AUTONOMOUS_RUN_2026-09-17.md) | 9/17 通宵托管的完整决策日志（pan、融合、伪标签为何失败） |
 | [experiments/experiments.csv](experiments/experiments.csv) | **所有实验的结果总表**，每行有配置、分数和结论 |
+| [experiments/phase2-completion-20260926.md](experiments/phase2-completion-20260926.md) | Phase 2 数据、推理、合并、提交 ref 与哈希证据 |
 | [docs/learning_path.md](docs/learning_path.md) | 训练/验证/测试等基础概念（新手先看） |
 | [docs/REBOOT_RECOVERY_HSI_E60.md](docs/REBOOT_RECOVERY_HSI_E60.md) | 长训练中断后如何安全续跑 |
 | `kaggle_remote/run_hsi_yolo26.py` | 远程训练流水线主脚本（Kaggle 和云服务器通用） |
