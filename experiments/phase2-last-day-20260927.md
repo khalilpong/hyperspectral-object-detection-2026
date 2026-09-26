@@ -261,3 +261,19 @@ The full-precision result contains all group and class metrics, source/input/cod
 hashes and cache-only receipts. All **238 pytest tests passed**; new script/test
 `py_compile` and `git diff --check` passed. Only code, tests and this report enter
 Git; caches and result artifacts stay ignored.
+
+## Final research and closeout
+
+The user requested one final review of high-scoring participants' methods,
+then closeout until tomorrow's final submission decision. The
+[source-backed review](final-public-methods-review-20260926.md) found no verified
+public recipe attributable to the leading entries, and no ready improvement
+that can be applied to the fixed checkpoint. It records the updated official
+test-pseudo-label allowance separately from the ranking inference-only rule.
+
+Decision: stop further experimental expansion and retain A/B. There is no new
+passing candidate awaiting Submit. Tomorrow, follow the user's instructions
+after live deadline/quota/submission/selection checks. Do not repeat an identical
+CSV and call it an improvement; do not change the final selected refs without
+independent confirmation. No scheduled task, new training or Kaggle action was
+created by this final review.

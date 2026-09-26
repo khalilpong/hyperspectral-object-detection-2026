@@ -1,5 +1,11 @@
 # Official Kaggle discussion research (2026-09-20 to 2026-09-22)
 
+> Historical snapshot. On September 26, a host reply explicitly permitting
+> self-training on unlabeled test images (ranking remains inference-only) was
+> found. See [the final public-method review](final-public-methods-review-20260926.md).
+> Preserve the dated observations below; do not use their former lack of a
+> host response as the current rule or execute their old training queue.
+
 Research date: 2026-09-22 (Asia/Singapore). Sources were restricted to the official Kaggle competition pages and the competition-host account `HotTracking2025`. The discussion index is [the official discussion page](https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion); the current public leaderboard is [the official leaderboard](https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/leaderboard).
 
 ## Current leaderboard signal (official)
