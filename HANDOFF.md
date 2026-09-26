@@ -1,10 +1,29 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-26 12:28（北京时间）
+> 最后更新：2026-09-26 13:10（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
-## 一句话现状
+## 当前收尾状态（本节覆盖下方历史交接中的旧动作指令）
+
+**两个固定 flip 候选均已 COMPLETE，且 Public test-reference 都提高；最终勾选仍为 0/2，等待用户对准确 refs 单独确认。**
+
+| 合规 Phase 2 文件 | Ref | Public test-reference | 相对 baseline | 状态 |
+|---|---:|---:|---:|---|
+| A：七尺度 + 1024 hflip，f0.65/sg0.125/boxscale101 | 56569707 | **0.62865** | **+0.00148** | COMPLETE |
+| B：七尺度 + 1024 hflip，f0.82/sg0.125/boxscale101 | 56569768 | **0.62767** | **+0.00050** | COMPLETE |
+| baseline：七尺度 f0.74/sg0.125/boxscale101 | 56568811 | 0.62717 | — | COMPLETE |
+
+- 两个新文件分别为 196,609 / 241,891 行，均覆盖 test1000 + ranking1000，零重叠、连续 row id、schema/geometry 校验通过。private score均未公布。
+- 唯一生产 checkpoint SHA-256 仍为 `8E4BFBF7...4254C3`。test 七尺度复用已有单模型 cache；ranking 因缺原始逐尺度 cache 只补建一次。test/ranking 的 1024 flip 各只推理一次，A/B 都只重做融合。两个 baseline 数值复现均通过。
+- 全套 `223 passed`，针对性测试、`py_compile` 与 diff-check通过。详细命令、哈希、风险审计和回执摘要见 [最终收尾记录](experiments/phase2-flip-finalization-20260926.md)。原始 cache、manifest、CSV、数据和权重均 ignored。
+- 用户在本任务中明确授权代理自行决定两次 Submit 的时机和次数，已据此完成 A/B。**最终 checkbox 与 Save 的独立确认要求仍有效。**
+- **建议最终只选择 refs `56569707` 与 `56569768`。** 官方补充通知明确最终 Phase 2 取所选提交中排名集最好的一次；旧 Phase 1 文件的排名集分数为零，无需占一个名额来保住 Phase 1 冻结部分。不要再沿用旧的 `56568811 + 56455800` 建议。
+- Phase 1 的 `0.63546` 是历史 Public 记录；该 ref 当前全 test1000 重算 Public 为 `0.62717`，本次未核实主办方另行公布的正式冻结成绩。
+- **尚未勾选任何提交，也尚未 Save。当前最终选择 0/2。** 完成前必须得到用户对上述准确 pair 的确认，再验证 2/2。绝不能选择任何历史 ensemble。
+- 两次机会已经使用完毕，不再训练、适配 ranking、加载第二 checkpoint、扩展参数或提交其他候选。
+
+## 历史背景（截至 2026-09-26 12:28，以下旧“当前/下一步”以本页顶部为准）
 
 **Phase 2 合规基线已经完成；用户现决定另开对话，用当天最后 2 次提交机会做一次严格受限的 inference-only 提升冲刺。** 基线 ref `56568811` 于 2026-09-26 12:13（北京时间）完成，Public test-reference 为 `0.62717`，ranking private score仍由 Kaggle 隐藏。它沿用 Phase 1 合规单 YOLO26m checkpoint：冻结的 test1000 预测与 inference-only ranking1000 预测合并，共 2,000 图、198,063 行，最终 CSV SHA-256 `1744A354...56C5E23`。最终选择仍为 `0/2`；在两个候选完成前不要勾选。Phase 1 合规最佳仍是 ref `56455800` / frozen Public `0.63546`。历史 `0.65091` 来自违规八模型融合，绝不能提交或最终选择。
 
