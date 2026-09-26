@@ -1,12 +1,12 @@
 # 交接文档：从这里开始
 
 > 接手本项目的人**先读完这一页**，再按需跳转到详细文档。
-> 最后更新：2026-09-26 12:18（北京时间）
+> 最后更新：2026-09-26 12:28（北京时间）
 > 🤖 **要把项目交给另一个 AI 接手？** 直接把 [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) 里的提示词发给它。
 
 ## 一句话现状
 
-**Phase 2 已完成合规提交，当前只剩最终榜单勾选。** Kaggle ref `56568811` 于 2026-09-26 12:13（北京时间）完成，Public test-reference 为 `0.62717`，ranking private score 仍由 Kaggle 隐藏。该提交沿用 Phase 1 合规单 YOLO26m checkpoint：冻结的 test1000 预测与 inference-only ranking1000 预测合并，共 2,000 图、198,063 行，最终 CSV SHA-256 `1744A354...56C5E23`。Phase 1 合规最佳仍是 ref `56455800` / Public `0.63546`。账号历史最高 `0.65091` 来自违规八模型融合，绝不能选为最终提交。
+**Phase 2 合规基线已经完成；用户现决定另开对话，用当天最后 2 次提交机会做一次严格受限的 inference-only 提升冲刺。** 基线 ref `56568811` 于 2026-09-26 12:13（北京时间）完成，Public test-reference 为 `0.62717`，ranking private score仍由 Kaggle 隐藏。它沿用 Phase 1 合规单 YOLO26m checkpoint：冻结的 test1000 预测与 inference-only ranking1000 预测合并，共 2,000 图、198,063 行，最终 CSV SHA-256 `1744A354...56C5E23`。最终选择仍为 `0/2`；在两个候选完成前不要勾选。Phase 1 合规最佳仍是 ref `56455800` / frozen Public `0.63546`。历史 `0.65091` 来自违规八模型融合，绝不能提交或最终选择。
 
 - 官方 Rules 要求只能使用一个 detection model；主办方进一步明确：同一训练模型的 TTA/多尺度允许，不同模型的 voting、weighted fusion、post-NMS fusion 禁止。官方澄清：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/727863>。
 - `0.63917` 到 `0.65091` 的历史多模型成绩仅保留作研究记录；**禁止再提交任何 ensemble 文件，也不要把它们选为最终提交**。
@@ -15,12 +15,13 @@
 - Phase 2 ranking 数据已按官方清单选择性取得：1,000 张 16-bit grayscale PNG，官方总字节数 `3,893,334,217`；ranking-only ZIP SHA-256 `C6734C0D...1D590`。预处理严格复用 HSI16 band order `[5,8,13,0,1,2,3,4,6,7,9,10,11,12,14,15]` 和 per-image shared P0.5/P99.5 uint8 合同，无训练、伪标签、BN 更新或其他模型状态适配。
 - Phase 2 ranking 推理只加载既有 checkpoint SHA-256 `8E4BFBF7...4254C3`，使用七尺度 `832/896/960/1024/1088/1152/1216`、`fusion_iou=0.74`、`support_gain=0.125`、`max_det=300`，再应用已审计的全局 boxscale101。ranking CSV 为 99,507 行/1,000 图，SHA-256 `1F9947E0...95B42`。
 - 严格合并器核验 frozen Phase 1 CSV SHA-256 `C01214E6...995A86`、ranking CSV、checkpoint 与 lineage manifest；test/ranking ID overlap 为 0，最终 2,000 图覆盖完整、行 ID 连续、无 geometry/schema 问题。Kaggle ref `56568811` 状态 `COMPLETE`；最终选择仍为 `0/2`，必须在动作前确认后只勾选 refs `56568811` 与 `56455800`。
+- 2026-09-26 12:28 用户重新开放**最多两次** Phase 2 提交用于提升，但只允许同一 checkpoint 的无状态推理变化。当前首选是复用七尺度 cache，再各图新增一次 `1024` horizontal-flip 推理；固定验证里仅 `flip fusion_iou=0.65/support_gain=0.125`（`+0.00016978`）和 `0.82/0.125`（`+0.00010398`）相对 incumbent 为正。两者都低于旧 `+0.001` 门禁，属于最后机会的低置信度候选，不得宣传为确定提升。完整交接见 `PHASE2_LAST_TWO_SUBMISSIONS_HANDOFF_20260926.md`。
 - zero-init 私有消融已完成并否决：最佳 `0.69690`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交。
 - object-crop 私有消融已完成并否决：标准 full-val `0.69772`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交，也不扩展 tile。
 - P1–P99 已否决：固定划分 `0.69668 < 0.70143`；不要重复训练或提交其第九成员候选。
 - SpectralStem 私有消融已完成并否决：标准 full-val 最佳与最终均为 epoch 30 的 `0.69930`，低于旧同规格 `0.70143` 和门槛 `0.70443`；不跑全量、不提交。生成的测试 CSV 仅通过本地结构校验，未上传比赛。
 - phase-aware bilinear v1 私有消融已完成并否决：固定 2400/600，唯一训练变量是保留 4×4 mosaic 的物理 row/column phase，并按宽高比重建到长边 1024；最佳/最终 epoch 30 为 `0.69935`，比普通同规格 e30 的 `0.70143` 低 `0.00208`，比门槛 `0.70443` 低 `0.00508`。测试 CSV 的 38,304 条检测仅通过本地结构校验，未上传比赛。
-- 显式 horizontal-flip-only 已完成并否决：cache control 精确通过，但当前七尺度最佳 + flip 最高 `0.70587796`，只比 supported-full 高 `+0.00016978`，未达到 `+0.001` 推理门禁；不生成、不提交该候选。
+- 显式 horizontal-flip-only 在原 `+0.001` 门禁下曾被正确否决：cache control 精确通过，七尺度 + flip 最高 `0.70587796`，只比 supported-full 高 `+0.00016978`。2026-09-26 用户为最后两次机会重新开放了该精确候选及第二个微正配置；这不是推翻旧证据，也不允许扩展扫参。
 - 同规格 YOLO26m 45 轮 fixed split 已完成并否决：最佳/最终均为 epoch 45 的 `0.69899`，比 e30 的 `0.70143` 低 `0.00244`，比全量门槛低 `0.00544`；不启动 full-data 45 轮训练，测试 CSV 仅通过本地结构校验，未上传比赛。
 - `cls_pw=0.25` 私有 fixed-split 消融已完成并否决：固定 2400/600，唯一训练变量为分类频次权重；最佳 epoch 27 为 `0.69863`（mAP50 `0.95662`），最终 epoch 30 为 `0.69862`，低于普通同规格 e30 `0.70143` 和 `0.70443` 门槛。训练 return code 0、batch 8/workers 2/device 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 36,784 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
 - random-affine `scale=0.3` 私有 fixed-split 消融已完成并否决：固定 2400/600，已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于 `0.70443` 门槛 `0.00451`。训练 return code 0，无 CUDA OOM 或 shared-memory 错误；测试 CSV 的 31,848 条检测仅通过本地 checker，未上传比赛、无 Public 分数。
@@ -37,7 +38,7 @@
 - RT-DETR 类名别名已否决：`people -> person` 与 `e-bike -> bicycle` 没有官方语义等价证据，不能把当前 4/18 精确 COCO 行迁移当作 bug。现成的 `num_denoising=200` 单变量包 `kernel_ablation_rtdetr_nd200` 已预注册（slug `zephyrpong/hsi-rtdetr-l-nd200-ablation`），它**未上传、未运行**，只在 random 与 zero extra-channel 两项 RT-DETR fixed 都失败后排队。
 - YOLO26m EIoU 已在 AutoDL 重庆 743 单机完成严格 fixed：30/30、batch 8/workers 2，最佳 epoch 29 `mAP50-95=0.70128`、最终 `0.70106`，比 `0.70443` 门禁低 `0.00315`，因此明确 NO-GO，不跑 full-data。正式 wrapper 在训练后因远端缺少 `pandas` 停于测试推理，留下完整权重/合同/失败归档；这不改变 fixed 精度结论，也不得以“补依赖”为由推进 full-data。
 - YOLO26m 有效 AdamW `lr0=0.001` 本机 fixed 已完成并否决：严格 2400/600、30 轮、batch 2/workers 0，最佳/最终 epoch 30 `mAP50-95=0.67233`，比普通 fixed `0.70143` 低 `0.02910`、比门禁 `0.70443` 低 `0.03210`。进程正常退出、stderr 为空，runtime optimizer/model contracts 与 fresh `best.pt` reload 均通过；不跑 full-data、不生成正式 CSV、不提交。详见 `experiments/local-adamw-lr001-run-20260923.md`。
-- 用户明确决定停止继续冲奖和调参，但仍要完成比赛。该完赛范围现已完成到 Phase 2 `COMPLETE` 提交；不得再启动 `reg_max=16`、通道顺序、YOLO11m/26x、fixed/full-data、重复 inference 或其他探索性任务。最后仅剩动作前确认后的最终榜单勾选。一次因上下文重置误启动的 `reg_max=16` 本机进程在第 1 轮完成前已按精确 PID 树停止，没有 `results.csv` 或权重，不能当作实验结果。
+- 用户仍禁止任何训练和广泛调参，但于 2026-09-26 重新开放一个最多两次提交的 inference-only 收尾冲刺。不得启动 `reg_max=16`、通道顺序、YOLO11m/26x、fixed/full-data 或新模型；只允许交接文档里固定的同 checkpoint horizontal-flip 候选，且每次 Submit 与最终选择都要动作前确认。一次因上下文重置误启动的 `reg_max=16` 本机进程在第 1 轮完成前已按精确 PID 树停止，没有 `results.csv` 或权重，不能当作实验结果。
 - YOLO26m `reg_max=16` 已完成可审计 fixed 预注册：它把当前 `reg_max=1` 的归一化 L1 路径改为真正 16-bin DFL，其他训练合同不变。真实权重审计显示可精确复用源 checkpoint 的 `99.4216%` 参数，regmax 专属 shape mismatch 仅 1,560 个源参数；真实 16 通道 forward/loss/backward 与 4 图 Trainer/contract/checkpoint smoke 均通过。一次上下文重置后的本机误启动在第 1 轮完成前即按用户“停止优化”决定中止，没有 `results.csv` 或权重，故仍无 fixed 精度结论，绝不能续跑或引用成正负结果。
 - 普通 HSI16 `[13,8,5,...]` 通道顺序候选已完成可审计 fixed 预注册：它仍是同一 16 个物理 band、同一 shared P0.5-P99.5 uint8、同一标签/manifest，只把 pretrained RGB 三个数组槽位的物理映射从 `[5,8,13]` 改为 `[13,8,5]`。新 `preparation_config/report/dataset/manifest` 合同与哈希门禁、独立数据目录会拒绝静默复用 baseline NPY；合成集端到端测试证明数组只发生预期 permutation，标签、manifest 与 normalization bounds 不变。全仓 `177 passed`；本地私有包 `kernel_ablation_order1385`（slug `zephyrpong/hsi-yolo26m-order1385-ablation`）和 code-dataset staging 已就绪但**未上传、未运行**，详见 `experiments/yolo26m-hsi16-order1385-prereg-20260922.md`。
 - YOLO11m HSI16 checkpoint-native 候选也已完成可审计 fixed 预注册：官方 Ultralytics Assets `v8.4.0` 权重已下载并验 SHA-256 `D5FFC1A6...305B95`（40,684,120 bytes）；真实架构是 `reg_max=16`、true DFL、非 end-to-end Detect。HSI16/18 类目标可精确复用源 checkpoint 的 `99.6848%` 参数；真实 forward/loss/backward、4 图 Trainer、model/optimizer contract、保存后 fresh reload 与全仓 `184 passed` 均通过。本地私有包 `kernel_ablation_yolo11m_rm16`（slug `zephyrpong/hsi-yolo11m-rm16-ablation`）及 code-dataset staging 已就绪但**未上传、未运行**；来源种类、权重大小和 SHA-256 都进入 status/gate，详见 `experiments/yolo11m-hsi16-prereg-20260922.md`。
@@ -54,13 +55,13 @@
 1. random-affine `scale=0.3` fixed split 已以 `0.69992 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
 2. `cls_pw=0.25` fixed split 已以最佳 `0.69863 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
 3. phase-aware fixed split 已以 `0.69935 < 0.70443` 结束；不要启动其 full-data 训练，也不要上传它生成的测试 CSV。
-4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 也已低于 `+0.001` 门禁并停止。
+4. e45 fixed split 已以 `0.69899 < 0.70443` 结束；不要启动其全量 3000 张训练。Horizontal-flip-only 低于旧 `+0.001` 门禁；现在仅按专用交接精确复用两个微正配置，不得重新扫参。
 5. `dfl=2.0/2.5` 都已门禁失败；不要启动其 full-data，也不要上传两条作业各自产生的测试 CSV。
-6. 终止继续优化：Phase 2 已用现有合规单 checkpoint 完成无状态 ranking 推理、test1000+ranking1000 合并和 Kaggle Submit。不要重复推理或提交；只剩最终勾选。
+6. 禁止训练与开放式扫参。Phase 2 baseline 已完成；新的窄范围任务只允许同一 checkpoint、一次额外 `1024` horizontal flip 的两个预先固定融合配置，最多消耗两次提交。先做代码/验证/哈希/2000图合并，逐次停在 Submit 前等确认。
 7. RT-DETR random fixed 已以 `0.69309 < 0.70443` 结束并完整审计；禁止推它的 full-data 包、提交其测试 CSV或继续 zero/nd200 分支。
 8. Kaggle GPU 配额最后一次登录态刷新为 `38:03 / 30 hrs`；AutoDL 743 实例已关机且余额最后为 `-1.01` 元。完赛不需要继续试探配额、开机、充值或恢复远端依赖。
 9. 私有 bundle、原始 ZIP、远端训练权重/合同与失败归档都保留作学习证据；不得公开分享或清理。Phase 2 只复用已验证的 incumbent 权重与本地推理链。
-10. 单 checkpoint `boxscale101` Phase 1 ref `56455800` / Public `0.63546`，Phase 2 combined ref `56568811` / Public test-reference `0.62717` 均已 `COMPLETE`。不要重复提交；最终选择动作仍等待单独确认。
+10. 单 checkpoint `boxscale101` Phase 1 ref `56455800` / frozen Public `0.63546`，Phase 2 baseline ref `56568811` / Public test-reference `0.62717` 均已 `COMPLETE`。不要重复提交这两个 CSV；只可提交带明确新 manifest/hash 的 flip 候选。最终选择动作仍等待单独确认。
 11. 立即向用户确认团队信息邮件是否已经发送；若未发送，先找到“目标检测赛道指定邮箱”，再由用户提供/确认团队名称、队长姓名、队员、单位和指导教师信息。发送邮件会对外传输个人信息，不能凭公告内容擅自代发。
 
 ### 成绩与合规状态
@@ -77,16 +78,16 @@
 
 ### 若未来明确重启时的候选（当前全部停止）
 
-1. Phase 1 `boxscale101` ref `56455800` 与 Phase 2 combined ref `56568811` 均已 `COMPLETE`，不要重复提交。当前最终榜单仍是 `0/2`；经用户单独确认后只选择这两条合规记录，绝不能让 Kaggle 自动选中历史不合规 ensemble。
+1. Phase 1 `boxscale101` ref `56455800` 与 Phase 2 baseline ref `56568811` 均已 `COMPLETE`，不要重复提交。当前最终榜单仍是 `0/2`；先完成最多两个受限 flip 候选，再根据合规性、Public test-reference 和离线证据提议最终两条。任何勾选都需用户单独确认，绝不能让 Kaggle 自动选中历史不合规 ensemble。
 2. EIoU fixed 已以 `0.70128` 失败，AdamW `lr0=0.001` 本机 fixed 已以 `0.67233` 失败。不要续跑或转 full-data。
 3. 冻结的研究队列下一项原为 `reg_max=16`，再考虑普通 HSI16 `[13,8,5,...]` 通道顺序；当前用户已停止优化，两项都不得启动。公开 Notebook 的 `0.7394` 有 93.36% 验证泄漏，不能作为收益证据。
 4. RT-DETR zero 若也失败、仍有额度，再只跑一次 `num_denoising=200` fixed；不要添加 COCO 类名别名。
 5. `reg_max=16`、普通 HSI16 `[13,8,5,...]` 与 YOLO11m HSI16 都仍只有“值得一次 fixed 测量”的资格，绝不能把本地 smoke/合同、权重可迁移率或既有 `dfl=2.0/2.5` 写成精度收益。YOLO11m 已下载官方 checkpoint、完成哈希/血缘审计并打包，排在顺序候选之后。
 6. 只有 EIoU、`adamw_lr001`、`reg_max=16`、普通 HSI16 通道顺序与 YOLO11m 等更直接候选都失败且额度仍足，才运行已预注册的 YOLO26x fixed。YOLO26l、P2、1280 不得重复。
-7. `dfl=2.0/2.5`、YOLO26m zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、horizontal-flip-only、tile TTA、尺度来源/权重、support-count 排序、最终 `max_det` 网格和 RT-DETR random-init 均已否决。框校准只保留已过 OOF 的全局 `1.01×1.01`，不继续扫参。
+7. `dfl=2.0/2.5`、YOLO26m zero-init、object-crop、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、e45、tile TTA、尺度来源/权重、support-count 排序、最终 `max_det` 网格和 RT-DETR random-init 均已否决。Horizontal-flip-only 仍属旧门禁 NO-GO，但用户仅为最后两次机会例外开放专用交接中的两个已有微正配置。框校准只保留全局 `1.01×1.01`，不继续扫参。
 8. 不再扫多模型权重、WBF、成员组合或类别融合。历史 ensemble cache 仅供离线研究，不得生成比赛提交。
 
-> Phase 2 ref `56568811` 已完成，且没有消耗额外训练额度。不要再次上传或 Submit。最终勾选前必须实时核对 ref/文件名，并取得动作前确认；绝不能让 Kaggle 自动选中历史不合规 ensemble。
+> Phase 2 baseline ref `56568811` 已完成。用户声称当天还剩 2 次提交机会；接手者必须现场复核额度后再使用。最多提交两个交接文档中固定的同-checkpoint flip 候选，每次都要在最终 Submit 前重新确认。最终勾选同样单独确认，绝不能让 Kaggle 自动选中历史不合规 ensemble。
 
 ### 常用命令（Git Bash，项目根目录）
 
@@ -248,7 +249,7 @@ SUPPORT_GAIN=0.125 bash scripts/build_ensemble_submission.sh submissions/repro.c
 | pan + 光谱 17 通道融合 | −0.0089 | 前期打平，后期精修阶段 pan 通道成了干扰 |
 | SpectralStem 16→3 可学习投影 | `0.69930`，比旧同规格 `0.70143` 低 `0.00213` | mAP50 提升 `0.00392`，但 mAP50-95 下降；没有改善高 IoU 定位，`stone_block` 等类别退化 |
 | Phase-aware HSI16 输入重建 | `0.69935`，比普通同规格 e30 `0.70143` 低 `0.00208` | 保留 4×4 物理 phase 的 bilinear v1 重建提高了 mAP50，但未改善严格 IoU 定位；低于 `0.70443` 门禁，不跑全量、不提交 |
-| Horizontal-flip-only TTA | 七尺度+flip 最佳 `0.70587796`，只比同 evaluator supported-full 高 `+0.00016978` | cache control 通过，但低于 `+0.001` 推理门禁；不生成、不提交候选 |
+| Horizontal-flip-only TTA | 七尺度+flip 最佳 `0.70587796`，只比同 evaluator supported-full 高 `+0.00016978` | 低于旧 `+0.001` 门禁；仅因最后两次机会按专用交接例外开放两个既有微正配置，不扩展搜索 |
 | YOLO26m 延长到 45 轮 | `0.69899`，比 e30 `0.70143` 低 `0.00244` | epochs 31–45 无一轮超过 e30；mAP50 上升但严格 IoU 总指标下降，不跑全量 |
 | `cls_pw=0.25` | fixed split 最佳 `0.69863`，比普通同规格 e30 `0.70143` 低 `0.00280` | 分类频次加权提高 mAP50，但没有改善严格 IoU 定位；低于 `0.70443` 门禁，不跑全量、不提交 |
 | Random-affine `scale=0.3` | fixed split `0.69992`，比普通同规格 e30 `0.70143` 低 `0.00151` | 温和缩放提高 mAP50，但没有改善总体严格 IoU 定位；低于 `0.70443` 门禁，不跑全量、不提交 |
@@ -298,6 +299,8 @@ Kaggle 周额度最后实测为 `38:03 / 30 hrs`。AutoDL 重庆 743 曾成功�
 |---|---|
 | **HANDOFF.md**（本页） | 现状、成绩、已证否方向、下一步 |
 | [PROMPT_FOR_NEXT_AGENT.md](PROMPT_FOR_NEXT_AGENT.md) | 交给另一个 AI 接手时直接发给它的提示词 |
+| [PHASE2_LAST_TWO_SUBMISSIONS_HANDOFF_20260926.md](PHASE2_LAST_TWO_SUBMISSIONS_HANDOFF_20260926.md) | 最后两次提交机会的精确状态、候选、红线与执行顺序 |
+| [PROMPT_PHASE2_LAST_TWO_SUBMISSIONS.md](PROMPT_PHASE2_LAST_TWO_SUBMISSIONS.md) | 新对话可直接复制的短提示词 |
 | `scripts/build_ensemble_submission.sh` | 一键生成八成员融合提交，可用环境变量调权重 |
 | [docs/KAGGLE_REMOTE_TRAINING.md](docs/KAGGLE_REMOTE_TRAINING.md) | Kaggle 免费 GPU 远程训练：原理、命令、踩坑、运行记录 |
 | [docs/CLOUD_SERVER_TRAINING.md](docs/CLOUD_SERVER_TRAINING.md) | 云服务器训练：配置选型、从零到提交的完整步骤 |

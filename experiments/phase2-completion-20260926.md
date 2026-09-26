@@ -60,4 +60,15 @@ The merge and lineage checks are implemented by `scripts/merge_phase2_submission
 - Ranking private score: withheld by Kaggle at the time of this record.
 - Description recorded the single-checkpoint lineage, ranking inference-only scope, frozen test predictions, seven scales, and absence of model adaptation or ensemble.
 
-The submission itself is finished. The Kaggle final-selection counter remained `0/2`; after a fresh UI mapping check and separate user confirmation, select only Phase 2 ref `56568811` and compliant Phase 1 ref `56455800`. Never select the historical multi-checkpoint ensemble.
+The baseline submission itself is finished. The Kaggle final-selection counter remained `0/2`.
+
+## Limited continuation authorized after baseline completion
+
+At 2026-09-26 12:28 Asia/Singapore, the user decided to open a new conversation and use at most the final two daily submission opportunities to seek an inference-only improvement. This does not authorize training, ranking adaptation, additional checkpoints, or multi-model fusion. It also does not authorize an irreversible Kaggle Submit or final-selection save without a fresh action-time confirmation.
+
+The only already-measured unsubmitted same-checkpoint family with positive fixed-validation deltas is one extra `1024` horizontal-flip source fused with the existing seven-scale predictions. Two settings were positive versus the supported-full control:
+
+- `flip fusion_iou=0.65`, `support_gain=0.125`: `+0.0001697771` mAP50-95;
+- `flip fusion_iou=0.82`, `support_gain=0.125`: `+0.0001039762` mAP50-95.
+
+Both missed the former `+0.001` inference gate, so they are low-confidence last-chance candidates, not proven improvements. The focused continuation contract is recorded in `PHASE2_LAST_TWO_SUBMISSIONS_HANDOFF_20260926.md`. Keep the final-selection counter at `0/2` until the new candidates are complete or rejected, then request a separate confirmation for the exact two refs to select. Never select the historical multi-checkpoint ensemble.

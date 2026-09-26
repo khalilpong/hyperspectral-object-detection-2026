@@ -4,6 +4,8 @@
 > 把下面"提示词"整段复制发送即可。所有细节都在 [HANDOFF.md](HANDOFF.md)，提示词只负责让它先读对文件、守住红线。
 >
 > 如果用的是**不能执行命令的纯聊天窗口**：把 HANDOFF.md 全文一起贴给它，让它把要运行的命令写出来，由你在 Git Bash 里执行并把输出贴回去。
+>
+> **2026-09-26 最后两次 Phase 2 提交冲刺请优先使用更短、更聚焦的 [PROMPT_PHASE2_LAST_TWO_SUBMISSIONS.md](PROMPT_PHASE2_LAST_TWO_SUBMISSIONS.md)。**
 
 ---
 
@@ -23,7 +25,7 @@
 
 ### 当前状态（以 HANDOFF.md 为准，这里是摘要）
 
-- **最高优先级现状：停止调参并完成比赛。Phase 2 已于 2026-09-26 完成 Kaggle Submit，ref `56568811`，状态 `COMPLETE`，Public test-reference `0.62717`，ranking private score 仍隐藏。不要再训练、推理、上传或重复 Submit；现在只剩用户动作前确认后的最终榜单勾选，以及安全 GitHub 收尾。**
+- **最高优先级现状：Phase 2 baseline ref `56568811` 已 `COMPLETE`，Public test-reference `0.62717`，ranking private score仍隐藏。用户现重新开放最多两次提交用于 inference-only 提升；禁止训练、新 checkpoint、不同模型融合和开放式扫参。精确候选与流程以 `PHASE2_LAST_TWO_SUBMISSIONS_HANDOFF_20260926.md` 为准。每次 Kaggle Submit 和最终榜单选择仍须动作前确认。**
 - Kaggle 账号 `zephyrpong`。排行榜显示最高 `0.65091` 来自八模型融合，**违反官方单模型规则，只能视为历史不合规记录，绝不能最终勾选**。Phase 1 合规最佳是单 YOLO26m checkpoint 七尺度支持票加全局框宽高 `×1.01` 的 `0.63546`（ref `56455800`）。Phase 2 ref `56568811` 使用同一 checkpoint lineage，覆盖 frozen test1000 + inference-only ranking1000，共 2,000 图/198,063 行，CSV SHA-256 `1744A354...56C5E23`。
 - 官方允许同一训练模型的 TTA / multi-scale inference，禁止不同训练模型的 voting、weighted fusion 和 post-NMS fusion。任何 `submission_ens*.csv` 都不得再上传或选为最终提交。
 - 原合规最佳 `submissions/submission_single_m_hsi16_ms7_f074_sg0125.csv` 是同一 YOLO26m checkpoint 七尺度、`fusion_iou=0.74`、`support_gain=0.125`，Public `0.63072`；ref `56392305`，98,556 detections，SHA-256 `E6F5BC18...2CB48E`。
@@ -32,7 +34,7 @@
 - zero-init fixed split 最佳 `0.69690`，object-crop fixed split `0.69772`；两者均低于旧同规格 `0.70143` 和门槛 `0.70443`，已否决，不跑全量、不提交。
 - SpectralStem 本地链路门禁已通过，私有 fixed 2400/600 消融也已正常完成，但标准 full-val 最佳/最终仅 `0.69930`，低于旧同规格 `0.70143` 和门槛 `0.70443`。该路线已否决：不跑全量、不上传其测试 CSV。
 - phase-aware bilinear v1 私有 Kernel `zephyrpong/hsi-yolo26m-phase-ablation` version 1 已完成：固定 2400/600，唯一变量是保留 4×4 物理 phase 并按宽高比重建到长边 1024；最佳/最终 epoch 30 为 `0.69935`，低于普通同规格 `0.70143` 和门槛 `0.70443`，已否决。38,304 条测试检测仅通过本地 checker，无比赛 Submit。
-- 显式 horizontal-flip-only 已完成同 checkpoint 固定划分验证：cache control 通过，但最佳七尺度+flip 仅 `0.70587796`，相对 supported-full 只增 `+0.00016978 < +0.001`，已否决，不生成或提交候选。
+- 显式 horizontal-flip-only 已完成同 checkpoint 固定划分验证：cache control 通过，最佳七尺度+flip 为 `0.70587796`，相对 supported-full 仅 `+0.00016978 < +0.001`，因此旧门禁判定 NO-GO 仍成立；用户现在只为最后两次机会例外开放专用交接中的两个已有微正配置，不允许扩展搜索。
 - 普通 HSI16 YOLO26m 延长到 45 轮的 fixed 2400/600 消融已完成：最佳/最终 epoch 45 仅 `0.69899`，比 e30 的 `0.70143` 低 `0.00244`，比 `0.70443` 门槛低 `0.00544`。不启动 full-data e45，不上传其测试 CSV。
 - `cls_pw=0.25` 私有 fixed 2400/600 消融已完成并否决：唯一训练变量为分类频次权重；最佳 epoch 27 为 `0.69863`，最终 epoch 30 为 `0.69862`，低于普通同规格 e30 `0.70143` 和门槛 `0.70443`。36,784 条测试检测仅通过本地 checker，无比赛 Submit/Public；不要启动其 full-data 训练或上传该 CSV。
 - random-affine `scale=0.3` 私有 fixed 2400/600 消融已完成并否决：已记录的训练与数据参数中唯一差异为 `scale 0.5→0.3`；最佳/最终 epoch 30 为 `0.69992`，较普通同规格 e30 `0.70143` 低 `0.00151`，低于门槛 `0.70443`。31,848 条测试检测仅通过本地 checker，无比赛 Submit/Public；不要启动其 full-data 训练或上传该 CSV。
@@ -52,18 +54,18 @@
 - distinct-scale support-count 排序已否决：固定一个 checkpoint、七尺度、`fusion_iou=0.74` 与全局框 `×1.01`，三折和 full 都保留现有 confidence-mass `support_gain=0.125`；最佳 count-only `gamma=0.08` 为 `0.70590884`，比 incumbent `0.70750647` 低 `0.00159764`。不要生成 CSV，也不要继续扫置信度排序。
 - 最终 `max_det={200,300,400,500}` 零 GPU OOF 审计已否决：三折和 full 都保留 incumbent `300`；500/200/400 分别比 `0.70750647` 低 `0.00058980/0.00105322/0.00114808`。不要生成 CSV或继续扩展自适应 cap。
 - 已经证明没用、**不要重复**的方向见 HANDOFF.md "已经证明没用的方向"表格。
-- Phase 2 已 Submit；禁止继续试探 GPU、训练、重复上传或重复提交。最终 selection 仍需用户动作前确认。
+- Phase 2 baseline 已 Submit。禁止训练与重复 baseline；只允许专用交接文档中两个固定的同-checkpoint horizontal-flip 候选，且先现场复核确有 2 次额度。最终 selection 仍需用户动作前确认。
 - AutoDL 重庆 743 实例已关机；最后开机尝试因余额 `-1.01` 元被拒，未新增计费。不要充值、开机、补依赖、恢复推理或启动新候选。
 - EIoU 私有 bundle、原始比赛 ZIP、远端权重/合同和失败归档全部保留为学习证据。不要重新上传、公开分享、恢复执行或清理。
 - 主办方官方帖子要求所有团队在 **2026-09-23 前**发送团队信息，逾期可能影响成绩认定与奖励；邮件主题为“赛道名称－团队名称－队长姓名”，正文需列出全部队员、单位及指导教师（如有）。帖子没有写明目标检测赛道的指定收件邮箱，只给了疑问联系人 `1522859637@qq.com`，不得擅自把它当材料收件箱或代发个人信息。先让用户确认是否已经发送，并取得准确收件邮箱与具体个人信息。官方帖：<https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/discussion/742296>。
 
-### 当前接手行为（已完成 Phase 2，只收尾）
+### 当前接手行为（最后两次 inference-only 提交冲刺）
 
-1. 先核对 `HANDOFF.md` 和 `experiments/phase2-completion-20260926.md`；不要启动任何训练、推理或远端作业。Phase 2 ref `56568811` 已 `COMPLETE`。
+1. 先完整读 `PHASE2_LAST_TWO_SUBMISSIONS_HANDOFF_20260926.md`，再核对 `experiments/phase2-completion-20260926.md`；不要启动训练或远端作业。Phase 2 baseline ref `56568811` 已 `COMPLETE`。
 2. 不要恢复部分 `reg_max=16` 本机目录；它没有完整 epoch、结果或权重，只是一次已停止的操作记录。
 3. 保留 `data/`、`runs/`、`kaggle_remote/outputs/`、AutoDL bundle/归档、提交 CSV 与全部哈希证据；不要删除、搬移或公开分享。
-4. 不要重复提交 Phase 1 或 Phase 2。最终选择前重新核对 UI 中 ref 与文件名，取得用户新确认后只勾选 Phase 2 ref `56568811` 和 Phase 1 ref `56455800`；绝不勾选历史 ensemble。
-5. ranking 数据仅可推理；本项目已完成，无需再运行。禁止训练、伪标签、蒸馏、微调、BN 统计重估或其他更新模型状态的适应。
+4. 不要重复提交 Phase 1 或 Phase 2 baseline。最多准备两个 horizontal-flip alternate；每个都必须有新文件名、SHA-256、manifest、2000图严格校验和单 checkpoint lineage，并在最终 Submit 前等待用户确认。
+5. ranking 数据仅可无状态推理。禁止训练、伪标签、蒸馏、微调、BN 统计重估或其他模型状态适应。完成候选后再提议最终两条，绝不勾选历史 ensemble；最终选择仍需单独确认。
 6. 团队信息通知的 Track 1 指定收件邮箱仍未由官方公开确认；不要猜邮箱或代发个人信息。
 
 **很重要的方法论（这是这个项目用分数换来的）**：
