@@ -1,6 +1,6 @@
 # 用 Kaggle 免费 GPU 远程训练
 
-> 先读 [HANDOFF.md](../HANDOFF.md) 了解项目现状。Kaggle 不够用时见 [CLOUD_SERVER_TRAINING.md](CLOUD_SERVER_TRAINING.md)。
+> 本文保留历史训练环境与操作记录，旧成绩和计划不代表最终方案。项目已完赛归档，当前结果与恢复入口见 [README](../README.md)。云训练的历史参考见 [CLOUD_SERVER_TRAINING.md](CLOUD_SERVER_TRAINING.md)。
 
 ## 为什么要上 Kaggle
 
@@ -265,5 +265,5 @@ RT-DETR denoising-query 消融通过 `--rtdetr-num-denoising` 控制，默认 `1
 | 3. full（全量，30 轮 + 7 尺度推理） | 仅当第 2 步达标 → 出提交 | ✅ **Kaggle 0.62953，新最佳** |
 | 4. yolo26l ablation（双卡 DDP，batch 8） | 更大模型能否 ≥ **0.70443**（m 0.70143 + 0.003） | ❌ 0.69628，单模型不如 m；当第 3 个融合成员只 +0.00076，不训全量 |
 | 6. 伪RGB 的 yolo26m（batch 8，波段 5/8/13、3/6/8、0/7/15 各一个） | 当融合成员 | ✅ 全部训好；三个成员都进了八模型融合，Kaggle **0.64831** |
-| 7. 新的单变量 HSI16 fixed-split 消融 | 在不违反单模型边界下寻找可归因提升 | SpectralStem、phase-aware、e45、`cls_pw=0.25`、random-affine `scale=0.3` 均已否决；当前无已授权新训练，见 HANDOFF.md“下一步” |
+| 7. 新的单变量 HSI16 fixed-split 消融 | 在不违反单模型边界下寻找可归因提升 | SpectralStem、phase-aware、e45、`cls_pw=0.25`、random-affine `scale=0.3` 均已否决；项目已结束训练并归档，最终方案见 README |
 | 5. 本地模型融合（m + s 各 7 尺度共 14 路投票） | 留出集上能否比 m 单模型 +0.003 | ✅ 留出集 0.70830（+0.00426）→ **Kaggle 0.63917，新最佳** |

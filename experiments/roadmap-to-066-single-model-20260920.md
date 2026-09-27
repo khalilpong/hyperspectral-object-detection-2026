@@ -50,7 +50,7 @@
 
 ### 已否定方向
 
-本项目已有实测负结果：`imgsz=1280`、训练期 multi-scale、P2 head、close-mosaic=20、box loss=10、P1–P99、伪标签、YOLO26l、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、horizontal-flip-only，以及同规格 YOLO26m 单纯延长到 45 轮。它们不应在截止前重复消耗 GPU。详见 [HANDOFF.md](../HANDOFF.md) 与 [experiments.csv](experiments.csv)。
+本项目已有实测负结果：`imgsz=1280`、训练期 multi-scale、P2 head、close-mosaic=20、box loss=10、P1–P99、伪标签、YOLO26l、SpectralStem、phase-aware HSI16、`cls_pw=0.25`、random-affine `scale=0.3`、horizontal-flip-only，以及同规格 YOLO26m 单纯延长到 45 轮。它们不应在截止前重复消耗 GPU。详见 [experiments.csv](experiments.csv)；完赛后的最终方案与归档入口见 [README](../README.md)。
 
 ## 已实现的对象裁剪
 
