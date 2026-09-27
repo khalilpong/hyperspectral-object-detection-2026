@@ -1,5 +1,9 @@
 # Phase 2 last-day improvement assessment
 
+> Final-day verification completed on September 27 at approximately 12:21 UTC+8:
+> A/B are Complete and remain selected 2/2. No new passing candidate exists and
+> no duplicate Submit was performed. See [the live verification record](phase2-final-day-verification-20260927.md).
+
 Updated 2026-09-26 (UTC+8).
 
 The user requested further score improvement before the September 27 deadline,

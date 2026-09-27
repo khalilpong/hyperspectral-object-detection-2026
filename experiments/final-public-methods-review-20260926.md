@@ -1,5 +1,9 @@
 # Final public-method review and closeout decision
 
+> September 27 final-day live verification is complete: A/B remain Success /
+> Complete and selected 2/2. No duplicate Submit was needed or performed. See
+> [the final-day receipt](phase2-final-day-verification-20260927.md).
+
 Research date: 2026-09-26, Asia/Singapore. User asked what high-scoring teams
 use, requested one last assessment, and otherwise wanted to close work until
 tomorrow's final submission decision. Existing no-training/no-paid-compute,
