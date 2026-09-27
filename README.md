@@ -6,7 +6,7 @@
 
 - [比赛主页](https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026)
 - [提交记录](https://www.kaggle.com/competitions/hyperspectral-object-detection-challenge-2026/submissions)
-- [完整资料归档与恢复说明（私有 Release）](https://github.com/khalilpong/hyperspectral-object-detection-2026/releases/tag/archive-20260927)
+- [完整资料归档与恢复说明（公开 Release）](https://github.com/khalilpong/hyperspectral-object-detection-2026/releases/tag/archive-20260927)
 
 ## 最终结果
 
@@ -73,7 +73,7 @@ test 与 ranking 使用相同的推理和后处理参数。ranking 仅作推理�
 
 ## 获取代码与恢复完整资料
 
-本仓库保留代码、测试与文档。数据、模型、提交 CSV、预测缓存和原始实验日志存放在[私有归档 Release](https://github.com/khalilpong/hyperspectral-object-detection-2026/releases/tag/archive-20260927)，需要有仓库权限的 GitHub 账号访问。
+本仓库保留代码、测试与文档。数据、模型、提交 CSV、预测缓存和原始实验日志存放在[公开归档 Release](https://github.com/khalilpong/hyperspectral-object-detection-2026/releases/tag/archive-20260927)，代码与归档资料均可公开访问。
 
 只查看代码：
 
@@ -95,7 +95,7 @@ py -3.11 .\hsi-extracted\restore.py --output .\hsi-project
 
 下载时必须保留全部 35 卷，并按 `SHA256SUMS.txt` 校验。`hsi-project` 必须是不存在的新目录；恢复脚本会按 manifest 重建原始路径，不覆盖已有目录。完整恢复约需 63 GiB 输出空间，此外还需容纳下载分卷和解包后的内容库。
 
-归档没有保留可重建的 `.venv`、字节码/测试缓存、本机 Ultralytics 设置和代理工作便笺。运行环境使用 Python 3.11，可按 [`pyproject.toml`](pyproject.toml) 与归档中的 `environment-freeze.txt` 重建。完整 Git 历史另有 `project-history.bundle`。归档是完赛时的历史快照，最新说明以本 README 为准。
+归档没有保留可重建的 `.venv`、字节码/测试缓存、本机 Ultralytics 设置和代理工作便笺。运行环境使用 Python 3.11，可按 [`pyproject.toml`](pyproject.toml) 与归档中的 `environment-freeze.txt` 重建。完整 Git 历史另有 `project-history.bundle`。归档内文档保留生成时状态（含旧的私有访问说明）；当前代码与完整归档已公开，最新说明以本 README 为准。
 
 ## 结果与实验记录
 
